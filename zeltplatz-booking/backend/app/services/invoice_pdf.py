@@ -11,11 +11,12 @@ from reportlab.platypus import HRFlowable, Image, Paragraph, SimpleDocTemplate, 
 
 from app.schemas import InvoiceLine, InvoiceRead
 
-_GROUP_ORDER = ("pitch", "person", "service")
+_GROUP_ORDER = ("pitch", "person", "service", "custom")
 _GROUP_TITLES = {
     "pitch": "Zeltplätze",
     "person": "Personen",
     "service": "Zusatzdienste",
+    "custom": "Sonstige Positionen",
 }
 
 
@@ -49,6 +50,11 @@ def _escape(text: str) -> str:
     )
 
 
+def _period_short(start, end) -> str:
+    """Day+month only — year is redundant in the period column."""
+    return f"{start.strftime('%d.%m.')} – {end.strftime('%d.%m.')}"
+
+
 def _address_html(address: str) -> str:
     return "<br/>".join(_escape(part) for part in (address or "").splitlines() if part.strip())
 
@@ -72,6 +78,17 @@ def render_invoice_pdf(invoice: InvoiceRead, logo_file: Path | None = None) -> b
         alignment=0,
     )
     small = ParagraphStyle("InvoiceSmall", parent=styles["Normal"], fontSize=9, leading=12)
+    cell_style = ParagraphStyle(
+        "InvoiceCell",
+        parent=styles["Normal"],
+        fontSize=9,
+        leading=11,
+    )
+    cell_right = ParagraphStyle(
+        "InvoiceCellRight",
+        parent=cell_style,
+        alignment=2,  # TA_RIGHT
+    )
     footer_style = ParagraphStyle("InvoiceFooter", parent=styles["Normal"], fontSize=8, leading=11, textColor=colors.HexColor("#444444"))
 
     operator = invoice.operator
@@ -87,42 +104,9 @@ def render_invoice_pdf(invoice: InvoiceRead, logo_file: Path | None = None) -> b
             img = Image(str(logo_file))
             img._restrictSize(35 * mm, 25 * mm)
             header_cells.append(img)
-            # #region agent log
-            try:
-                import json, time
-                from pathlib import Path as _P
-                _log = _P(__file__).resolve().parents[4] / ".cursor" / "debug-188c80.log"
-                _log.parent.mkdir(parents=True, exist_ok=True)
-                with _log.open("a", encoding="utf-8") as _f:
-                    _f.write(json.dumps({"sessionId":"188c80","runId":"post-fix","hypothesisId":"B","location":"invoice_pdf.py:logo","message":"logo embedded","data":{"path":str(logo_file),"drawW":float(img.drawWidth),"drawH":float(img.drawHeight)},"timestamp":int(time.time()*1000)})+"\n")
-            except Exception:
-                pass
-            # #endregion
-        except Exception as e:
-            # #region agent log
-            try:
-                import json, time
-                from pathlib import Path as _P
-                _log = _P(__file__).resolve().parents[4] / ".cursor" / "debug-188c80.log"
-                _log.parent.mkdir(parents=True, exist_ok=True)
-                with _log.open("a", encoding="utf-8") as _f:
-                    _f.write(json.dumps({"sessionId":"188c80","runId":"post-fix","hypothesisId":"B","location":"invoice_pdf.py:logo:error","message":"logo embed failed","data":{"path":str(logo_file),"errorType":type(e).__name__,"error":str(e)},"timestamp":int(time.time()*1000)})+"\n")
-            except Exception:
-                pass
-            # #endregion
+        except Exception:
             header_cells.append("")
     else:
-        # #region agent log
-        try:
-            import json, time
-            from pathlib import Path as _P
-            _log = _P(__file__).resolve().parents[4] / ".cursor" / "debug-188c80.log"
-            _log.parent.mkdir(parents=True, exist_ok=True)
-            with _log.open("a", encoding="utf-8") as _f:
-                _f.write(json.dumps({"sessionId":"188c80","runId":"post-fix","hypothesisId":"A","location":"invoice_pdf.py:logo:missing","message":"no logo file for pdf","data":{"logo_file":str(logo_file) if logo_file else None,"is_file":bool(logo_file and logo_file.is_file())},"timestamp":int(time.time()*1000)})+"\n")
-        except Exception:
-            pass
-        # #endregion
         header_cells.append("")
 
     org_bits = []
@@ -158,50 +142,89 @@ def render_invoice_pdf(invoice: InvoiceRead, logo_file: Path | None = None) -> b
                 f"({invoice.nights} Nächte)",
                 styles["Normal"],
             ),
+            Paragraph(
+                f"<b>Rechnungsnummer:</b> {_escape(invoice.invoice_number or '—')}",
+                styles["Normal"],
+            ),
             Paragraph(f"<b>Buchung-Nr:</b> {invoice.booking_id}", styles["Normal"]),
             Spacer(1, 12),
         ]
     )
 
-    data = [["Position", "Menge", "Tagespreis", "Zeitraum", "Nächte", "Betrag"]]
+    def _cell(text: str, style: ParagraphStyle = cell_style) -> Paragraph:
+        return Paragraph(_escape(text), style)
+
+    data: list[list] = [
+        [
+            _cell("Position"),
+            _cell("Menge", cell_right),
+            _cell("Tagespreis", cell_right),
+            _cell("Zeitraum", cell_right),
+            _cell("Nächte", cell_right),
+            _cell("Betrag", cell_right),
+        ]
+    ]
     special_rows: list[tuple[int, str]] = []
 
     for category, group_lines in _lines_by_category(invoice.lines):
         title = _GROUP_TITLES.get(category, category)
-        data.append([title, "", "", "", "", ""])
+        data.append([_cell(title), "", "", "", "", ""])
         special_rows.append((len(data) - 1, "header"))
         subtotal = 0.0
         for line in group_lines:
             period = ""
             if line.start_date and line.end_date:
-                period = f"{line.start_date.isoformat()} – {line.end_date.isoformat()}"
-            data.append(
-                [
-                    line.label,
-                    f"{line.quantity:g}",
-                    _money(line.unit_price),
-                    period,
-                    str(line.nights),
-                    _money(line.amount),
-                ]
-            )
+                period = _period_short(line.start_date, line.end_date)
+            if category == "custom":
+                data.append(
+                    [
+                        _cell(line.label),
+                        _cell("—", cell_right),
+                        _cell("—", cell_right),
+                        "",
+                        _cell("—", cell_right),
+                        _cell(_money(line.amount), cell_right),
+                    ]
+                )
+            else:
+                data.append(
+                    [
+                        _cell(line.label),
+                        _cell(f"{line.quantity:g}", cell_right),
+                        _cell(_money(line.unit_price), cell_right),
+                        _cell(period, cell_right),
+                        _cell(str(line.nights), cell_right),
+                        _cell(_money(line.amount), cell_right),
+                    ]
+                )
             subtotal += line.amount
-        data.append(["", "", "", "", "Zwischensumme", _money(subtotal)])
+        data.append(
+            ["", "", "", "", _cell("Zwischensumme", cell_right), _cell(_money(subtotal), cell_right)]
+        )
         special_rows.append((len(data) - 1, "subtotal"))
 
-    data.append(["", "", "", "", "Summe", _money(invoice.total)])
+    data.append(
+        ["", "", "", "", _cell("Summe", cell_right), _cell(_money(invoice.total), cell_right)]
+    )
     special_rows.append((len(data) - 1, "total"))
 
-    table = Table(data, colWidths=[55 * mm, 16 * mm, 22 * mm, 38 * mm, 16 * mm, 22 * mm])
+    # Paragraph cells keep text inside colWidths; description (col 0) may wrap.
+    table = Table(
+        data,
+        colWidths=[65 * mm, 16 * mm, 22 * mm, 28 * mm, 16 * mm, 22 * mm],
+        repeatRows=1,
+    )
     style_cmds: list = [
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#2f5d3a")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
         ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
         ("FONTSIZE", (0, 0), (-1, -1), 9),
         ("GRID", (0, 0), (-1, 0), 0.3, colors.grey),
-        ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
     ]
     for row_idx, kind in special_rows:
         if kind == "header":
@@ -236,6 +259,71 @@ def render_invoice_pdf(invoice: InvoiceRead, logo_file: Path | None = None) -> b
 
     table.setStyle(TableStyle(style_cmds))
     story.append(table)
+
+    sig_label = ParagraphStyle(
+        "InvoiceSigLabel",
+        parent=styles["Normal"],
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#444444"),
+        spaceBefore=4,
+    )
+    signature_cell = Table(
+        [
+            [""],
+            [Paragraph("Bestätigung Gruppenleiter", sig_label)],
+        ],
+        colWidths=[78 * mm],
+        rowHeights=[22 * mm, None],
+    )
+    signature_cell.setStyle(
+        TableStyle(
+            [
+                ("LINEBELOW", (0, 0), (0, 0), 1, colors.black),
+                ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    signature_cell_qm = Table(
+        [
+            [""],
+            [Paragraph("Unterschrift Quartermaster", sig_label)],
+        ],
+        colWidths=[78 * mm],
+        rowHeights=[22 * mm, None],
+    )
+    signature_cell_qm.setStyle(
+        TableStyle(
+            [
+                ("LINEBELOW", (0, 0), (0, 0), 1, colors.black),
+                ("VALIGN", (0, 0), (-1, -1), "BOTTOM"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("TOPPADDING", (0, 0), (-1, -1), 0),
+                ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+            ]
+        )
+    )
+    signatures = Table(
+        [[signature_cell, signature_cell_qm]],
+        colWidths=[85 * mm, 85 * mm],
+    )
+    signatures.setStyle(
+        TableStyle(
+            [
+                ("VALIGN", (0, 0), (-1, -1), "TOP"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 0),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 0),
+                ("LEFTPADDING", (1, 0), (1, 0), 12),
+            ]
+        )
+    )
+    story.append(Spacer(1, 28))
+    story.append(signatures)
 
     footer_parts = []
     if operator.organization_name:

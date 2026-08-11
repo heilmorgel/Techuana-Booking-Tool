@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Booking, BookingAmendment, BookingPitch, BookingService, Person, Pitch, Service
+from app.models import Booking, BookingAmendment, BookingPitch, BookingService, Person, Pitch, PriceProfile, Service
 from app.schemas import BookingAmendRequest, PersonCreate
 from app.services.availability import assert_pitches_bookable, intervals_overlap, pitch_ids_active_from
 from app.services.service_availability import check_services, service_qty_from
@@ -15,6 +15,19 @@ from app.services.service_availability import check_services, service_qty_from
 
 def _person_key(p: Person | PersonCreate) -> tuple[str, date, str]:
     return (p.name.strip().lower(), p.birth_date, p.nationality.upper())
+
+
+def _default_profile_id(db: Session) -> int:
+    profile = db.scalar(select(PriceProfile).where(PriceProfile.is_default.is_(True)))
+    if profile is None:
+        raise HTTPException(status_code=500, detail="No default price profile configured")
+    return profile.id
+
+
+def _resolve_profile_id(db: Session, person: PersonCreate, default_id: int) -> int:
+    if person.price_profile_id is None:
+        return default_id
+    return person.price_profile_id
 
 
 def apply_amendment(db: Session, booking: Booking, payload: BookingAmendRequest) -> list[str]:
@@ -60,8 +73,10 @@ def apply_amendment(db: Session, booking: Booking, payload: BookingAmendRequest)
             "name": p.name,
             "birth_date": p.birth_date.isoformat(),
             "nationality": p.nationality,
+            "travel_document": p.travel_document or "",
             "start_date": p.start_date.isoformat(),
             "end_date": p.end_date.isoformat(),
+            "price_profile_id": p.price_profile_id,
         }
         for p in booking.persons
         if p.end_date > effective
@@ -158,6 +173,7 @@ def apply_amendment(db: Session, booking: Booking, payload: BookingAmendRequest)
             booking.booking_services.remove(row)
 
     # --- persons ---
+    default_profile_id = _default_profile_id(db)
     payload_keys = {_person_key(p) for p in payload.persons}
     for person in list(booking.persons):
         if person.end_date <= effective:
@@ -175,6 +191,10 @@ def apply_amendment(db: Session, booking: Booking, payload: BookingAmendRequest)
                 end = new_end
             if person.end_date == old_end or person.end_date > effective:
                 person.end_date = end
+            if match.price_profile_id is not None:
+                person.price_profile_id = match.price_profile_id
+            if match.travel_document is not None:
+                person.travel_document = match.travel_document or ""
 
     existing_active = {_person_key(p) for p in booking.persons if p.end_date > effective}
     for p in payload.persons:
@@ -190,8 +210,10 @@ def apply_amendment(db: Session, booking: Booking, payload: BookingAmendRequest)
                 name=p.name,
                 birth_date=p.birth_date,
                 nationality=p.nationality,
+                travel_document=p.travel_document or "",
                 start_date=start,
                 end_date=end,
+                price_profile_id=_resolve_profile_id(db, p, default_profile_id),
             )
         )
 

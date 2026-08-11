@@ -210,11 +210,50 @@ textarea {
   vertical-align: top;
 }
 
+.invoice-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.invoice-table th:nth-child(1),
+.invoice-table td:nth-child(1),
+.invoice-table .invoice-desc {
+  width: 32%;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+  white-space: normal;
+}
+
+.invoice-table th:nth-child(2),
+.invoice-table td:nth-child(2),
+.invoice-table th:nth-child(5),
+.invoice-table td:nth-child(5) {
+  width: 8%;
+  white-space: nowrap;
+}
+
+.invoice-table th:nth-child(3),
+.invoice-table td:nth-child(3),
+.invoice-table th:nth-child(6),
+.invoice-table td:nth-child(6) {
+  width: 12%;
+  white-space: nowrap;
+}
+
+.invoice-table th:nth-child(4),
+.invoice-table td:nth-child(4) {
+  width: 28%;
+  white-space: nowrap;
+}
+
 .invoice-table .invoice-group-header td {
   background: #e8efe9;
   font-weight: 700;
   border-bottom-color: var(--brand);
   padding-top: 0.85rem;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
 .invoice-table .invoice-subtotal td {
@@ -258,6 +297,27 @@ textarea {
   font: inherit;
   white-space: pre-wrap;
   color: var(--muted);
+}
+
+.invoice-signatures {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.5rem 2rem;
+  margin-top: 1.75rem;
+}
+
+.invoice-signature {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.invoice-signature-line {
+  height: 2.75rem;
+  border-bottom: 1px solid var(--text);
 }
 
 .invoice-footer {
@@ -671,7 +731,7 @@ textarea {
 .person-row {
   display: grid;
   gap: 0.65rem;
-  grid-template-columns: 1.3fr 0.95fr 0.55fr 0.95fr 0.95fr auto;
+  grid-template-columns: 1.3fr 0.95fr 0.55fr 0.95fr 0.95fr 0.95fr auto;
   align-items: end;
   margin-bottom: 0.65rem;
 }
@@ -680,6 +740,10 @@ textarea {
   gap: 0.4rem;
   margin-bottom: 0.4rem;
   align-items: center;
+}
+
+.person-travel-doc {
+  grid-column: 1 / -2;
 }
 
 @media (max-width: 720px) {

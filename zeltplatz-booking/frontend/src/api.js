@@ -77,7 +77,17 @@ export const api = {
     }
     return request(`/services/availability?${params}`)
   },
-  listPersonFeeElements: () => request('/person-fee-elements'),
+  listPriceProfiles: () => request('/price-profiles'),
+  createPriceProfile: (body) =>
+    request('/price-profiles', { method: 'POST', body: JSON.stringify(body) }),
+  updatePriceProfile: (id, body) =>
+    request(`/price-profiles/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
+  deletePriceProfile: (id) => request(`/price-profiles/${id}`, { method: 'DELETE' }),
+  listPersonFeeElements: (priceProfileId) => {
+    const q =
+      priceProfileId != null ? `?price_profile_id=${encodeURIComponent(priceProfileId)}` : ''
+    return request(`/person-fee-elements${q}`)
+  },
   createPersonFeeElement: (body) =>
     request('/person-fee-elements', { method: 'POST', body: JSON.stringify(body) }),
   updatePersonFeeElement: (id, body) =>
@@ -91,17 +101,23 @@ export const api = {
     return request(`/billing${q ? `?${q}` : ''}`)
   },
   getInvoice: (id) => request(`/bookings/${id}/invoice`),
-  getOperatorSettings: () => request('/operator-settings'),
-  updateOperatorSettings: (body) =>
-    request('/operator-settings', { method: 'PATCH', body: JSON.stringify(body) }),
-  operatorLogoUrl: () => `${API_BASE}/operator-settings/logo`,
-  uploadOperatorLogo: async (file) => {
+  createCustomInvoiceLine: (bookingId, body) =>
+    request(`/bookings/${bookingId}/invoice/custom-lines`, {
+      method: 'POST',
+      body: JSON.stringify(body),
+    }),
+  updateCustomInvoiceLine: (bookingId, lineId, body) =>
+    request(`/bookings/${bookingId}/invoice/custom-lines/${lineId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+    }),
+  deleteCustomInvoiceLine: (bookingId, lineId) =>
+    request(`/bookings/${bookingId}/invoice/custom-lines/${lineId}`, { method: 'DELETE' }),
+  getMeta: () => request('/meta'),
+  parseGaesteblatt: async (file) => {
     const form = new FormData()
     form.append('file', file)
-    const url = `${API_BASE}/operator-settings/logo`
-    // #region agent log
-    fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'188c80'},body:JSON.stringify({sessionId:'188c80',runId:'pre-fix',hypothesisId:'A',location:'api.js:uploadOperatorLogo:start',message:'logo upload request',data:{url,name:file?.name,size:file?.size,type:file?.type},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+    const url = `${API_BASE}/bookings/parse-gaesteblatt`
     const res = await fetch(url, {
       method: 'POST',
       body: form,
@@ -113,9 +129,32 @@ export const api = {
     } catch {
       data = text
     }
-    // #region agent log
-    fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'188c80'},body:JSON.stringify({sessionId:'188c80',runId:'pre-fix',hypothesisId:'A',location:'api.js:uploadOperatorLogo:response',message:'logo upload response',data:{status:res.status,ok:res.ok,detail:typeof data==='object'?data?.detail:String(data).slice(0,200)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+    if (!res.ok) {
+      const detail = data?.detail
+      const message = typeof detail === 'string' ? detail : JSON.stringify(detail || data || res.statusText)
+      throw new Error(message)
+    }
+    return data
+  },
+  getOperatorSettings: () => request('/operator-settings'),
+  updateOperatorSettings: (body) =>
+    request('/operator-settings', { method: 'PATCH', body: JSON.stringify(body) }),
+  operatorLogoUrl: () => `${API_BASE}/operator-settings/logo`,
+  uploadOperatorLogo: async (file) => {
+    const form = new FormData()
+    form.append('file', file)
+    const url = `${API_BASE}/operator-settings/logo`
+    const res = await fetch(url, {
+      method: 'POST',
+      body: form,
+    })
+    const text = await res.text()
+    let data = null
+    try {
+      data = text ? JSON.parse(text) : null
+    } catch {
+      data = text
+    }
     if (!res.ok) {
       const detail = data?.detail
       const message = typeof detail === 'string' ? detail : JSON.stringify(detail || data || res.statusText)

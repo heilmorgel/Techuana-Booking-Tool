@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.database import get_db
-from app.models import PersonFeeBracket, PersonFeeElement
+from app.models import PersonFeeBracket, PersonFeeElement, PriceProfile
 from app.schemas import (
     PersonFeeBracketCreate,
     PersonFeeElementCreate,
@@ -33,6 +33,7 @@ def _validate_brackets(brackets: list[PersonFeeBracketCreate]) -> None:
 def _to_read(element: PersonFeeElement) -> PersonFeeElementRead:
     return PersonFeeElementRead(
         id=element.id,
+        price_profile_id=element.price_profile_id,
         name=element.name,
         kind=element.kind,
         daily_price=float(element.daily_price or 0),
@@ -63,23 +64,36 @@ def _apply_brackets(element: PersonFeeElement, brackets: list[PersonFeeBracketCr
 
 
 @router.get("", response_model=list[PersonFeeElementRead])
-def list_elements(db: Session = Depends(get_db)) -> list[PersonFeeElementRead]:
-    rows = list(
-        db.scalars(
-            select(PersonFeeElement)
-            .options(selectinload(PersonFeeElement.brackets))
-            .order_by(PersonFeeElement.sort_order, PersonFeeElement.name)
-        ).all()
+def list_elements(
+    price_profile_id: int | None = Query(default=None),
+    db: Session = Depends(get_db),
+) -> list[PersonFeeElementRead]:
+    stmt = (
+        select(PersonFeeElement)
+        .options(selectinload(PersonFeeElement.brackets))
+        .order_by(PersonFeeElement.sort_order, PersonFeeElement.name)
     )
+    if price_profile_id is not None:
+        stmt = stmt.where(PersonFeeElement.price_profile_id == price_profile_id)
+    rows = list(db.scalars(stmt).all())
     return [_to_read(row) for row in rows]
 
 
 @router.post("", response_model=PersonFeeElementRead, status_code=status.HTTP_201_CREATED)
 def create_element(payload: PersonFeeElementCreate, db: Session = Depends(get_db)) -> PersonFeeElementRead:
-    existing = db.scalar(select(PersonFeeElement).where(PersonFeeElement.name == payload.name))
+    profile = db.get(PriceProfile, payload.price_profile_id)
+    if not profile:
+        raise HTTPException(status_code=404, detail="Price profile not found")
+    existing = db.scalar(
+        select(PersonFeeElement).where(
+            PersonFeeElement.price_profile_id == payload.price_profile_id,
+            PersonFeeElement.name == payload.name,
+        )
+    )
     if existing:
-        raise HTTPException(status_code=409, detail="Fee element name already exists")
+        raise HTTPException(status_code=409, detail="Fee element name already exists in this profile")
     element = PersonFeeElement(
+        price_profile_id=payload.price_profile_id,
         name=payload.name,
         kind=payload.kind,
         daily_price=payload.daily_price if payload.kind == "fixed" else 0,
@@ -114,11 +128,13 @@ def update_element(
     if "name" in data:
         clash = db.scalar(
             select(PersonFeeElement).where(
-                PersonFeeElement.name == data["name"], PersonFeeElement.id != element_id
+                PersonFeeElement.price_profile_id == element.price_profile_id,
+                PersonFeeElement.name == data["name"],
+                PersonFeeElement.id != element_id,
             )
         )
         if clash:
-            raise HTTPException(status_code=409, detail="Fee element name already exists")
+            raise HTTPException(status_code=409, detail="Fee element name already exists in this profile")
         element.name = data["name"]
     if "kind" in data:
         element.kind = data["kind"]

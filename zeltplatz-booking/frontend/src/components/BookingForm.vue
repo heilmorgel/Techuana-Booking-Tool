@@ -12,6 +12,22 @@
             <h2>{{ dialogTitle }}</h2>
             <div class="header-actions">
               <button
+                v-if="canImportGaesteblatt"
+                type="button"
+                class="btn secondary btn-sm"
+                :disabled="importing"
+                @click="triggerImport"
+              >
+                {{ importing ? 'Import…' : 'Import Gästeblatt' }}
+              </button>
+              <input
+                ref="importInput"
+                type="file"
+                accept=".xlsx,.xltx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                hidden
+                @change="onImportFile"
+              />
+              <button
                 v-if="canAmend && locked"
                 type="button"
                 class="btn btn-sm"
@@ -75,6 +91,17 @@
                 required
                 maxlength="200"
                 :readonly="locked"
+              />
+            </label>
+
+            <label>
+              Reise-/Gruppenleiter (Stammdaten)
+              <textarea
+                v-model="form.group_leader"
+                rows="3"
+                maxlength="4000"
+                :readonly="locked"
+                placeholder="Name, Adresse, Kontaktdaten…"
               />
             </label>
 
@@ -152,9 +179,11 @@
             <div v-show="activeTab === 'persons'" class="tab-panel compact-section" role="tabpanel">
               <div class="panel-header compact-header">
                 <strong>Personen</strong>
-                <button v-if="!locked" type="button" class="btn secondary btn-sm" @click="addPerson">
-                  + Person
-                </button>
+                <div class="header-actions">
+                  <button v-if="!locked" type="button" class="btn secondary btn-sm" @click="addPerson">
+                    + Person
+                  </button>
+                </div>
               </div>
               <p v-if="!form.persons.length" class="muted tiny">
                 {{ locked ? 'Keine Personen erfasst' : 'Optional — ohne Personen möglich' }}
@@ -165,8 +194,23 @@
                 <select v-model="person.nationality" :disabled="locked" title="Staatsangehörigkeit">
                   <option v-for="c in countries" :key="c.code" :value="c.code">{{ c.code }}</option>
                 </select>
+                <select
+                  v-model.number="person.price_profile_id"
+                  :disabled="locked"
+                  title="Preisprofil"
+                >
+                  <option v-for="p in priceProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+                </select>
                 <input v-model="person.start_date" type="date" title="Anreise" :readonly="locked" />
                 <input v-model="person.end_date" type="date" title="Abreise" :readonly="locked" />
+                <input
+                  v-if="showTravelDocument(person)"
+                  v-model.trim="person.travel_document"
+                  placeholder="Reisedokument"
+                  title="Reisedokument (Art, Nummer, Ausstellungsbehörde)"
+                  :readonly="locked"
+                  class="person-travel-doc"
+                />
                 <button
                   v-if="!locked"
                   type="button"
@@ -253,6 +297,7 @@
             </div>
 
             <p v-if="error" class="error">{{ error }}</p>
+            <p v-if="importHint" class="muted tiny">{{ importHint }}</p>
             <button v-if="!locked" class="btn" type="submit" :disabled="saving">
               {{ isExisting ? 'Änderungen speichern' : 'Buchung speichern' }}
             </button>
@@ -304,6 +349,8 @@ const originalEndDate = ref('')
 const amendDialogOpen = ref(false)
 const amendments = ref([])
 const pitchSegments = ref([])
+const importInput = ref(null)
+const importing = ref(false)
 
 function todayIso() {
   const d = new Date()
@@ -323,12 +370,17 @@ const canAmend = computed(() => {
   return originalStartDate.value < t && t < originalEndDate.value
 })
 
+/** Import möglich für neue Buchungen und bestehende vor Anreise (nicht locked). */
+const canImportGaesteblatt = computed(() => !locked.value)
+
 const dialogTitle = computed(() => {
   if (!isExisting.value) return 'Neue Buchung'
   return locked.value ? 'Buchungsdetails' : 'Buchung bearbeiten'
 })
 
 const countries = ref([])
+const homeCountry = ref('AT')
+const priceProfiles = ref([])
 const allPitches = ref([])
 const availablePitches = ref([])
 const availability = ref([])
@@ -343,6 +395,8 @@ const notesSavedFlash = ref(false)
 const notesError = ref('')
 const savedNotes = ref('')
 const error = ref('')
+const importWarnings = ref([])
+const importHint = ref('')
 const pendingOverbook = ref([])
 const activeTab = ref('persons')
 const previousBookingStart = ref('')
@@ -350,6 +404,7 @@ const previousBookingEnd = ref('')
 
 const form = reactive({
   group_name: '',
+  group_leader: '',
   start_date: '',
   end_date: '',
   pitch_ids: [],
@@ -440,6 +495,7 @@ function historyLines(item) {
 
 function reset() {
   form.group_name = ''
+  form.group_leader = ''
   form.start_date = ''
   form.end_date = ''
   form.pitch_ids = []
@@ -457,6 +513,8 @@ function reset() {
   viewServices.value = []
   Object.keys(quantities).forEach((k) => delete quantities[k])
   error.value = ''
+  importWarnings.value = []
+  importHint.value = ''
   pendingOverbook.value = []
   activeTab.value = 'persons'
   loadingDetail.value = false
@@ -465,8 +523,129 @@ function reset() {
   notesSavedFlash.value = false
 }
 
+function showTravelDocument(person) {
+  return (person?.nationality || '').toUpperCase() !== (homeCountry.value || 'AT').toUpperCase()
+}
+
+function normalizePersonKey(name, birthDate) {
+  const n = String(name || '')
+    .normalize('NFKC')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .toLowerCase()
+  const b = String(birthDate || '').trim()
+  return `${n}|${b}`
+}
+
+function mapImportedPerson(p, fallbackStart, fallbackEnd) {
+  return {
+    name: p.name || '',
+    birth_date: p.birth_date || '',
+    nationality: p.nationality || homeCountry.value || 'AT',
+    travel_document: p.travel_document || '',
+    price_profile_id: defaultPriceProfileId(),
+    start_date: p.start_date || fallbackStart || form.start_date || '',
+    end_date: p.end_date || fallbackEnd || form.end_date || '',
+  }
+}
+
+/** Neue Buchung: Kopf + Personen aus Gästeblatt übernehmen. */
+function applyFullImport(draft) {
+  if (!draft) return
+  if (draft.group_name) form.group_name = draft.group_name
+  if (draft.group_leader) form.group_leader = draft.group_leader
+  if (draft.start_date) form.start_date = draft.start_date
+  if (draft.end_date) form.end_date = draft.end_date
+  form.persons = (draft.persons || []).map((p) =>
+    mapImportedPerson(p, draft.start_date, draft.end_date),
+  )
+  previousBookingStart.value = form.start_date
+  previousBookingEnd.value = form.end_date
+}
+
+/**
+ * Bestehende Buchung vor Anreise: nur Personen mergen.
+ * Abgleich über Name + Geburtsdatum; nur neue Datensätze hinzufügen.
+ */
+function mergeImportedPersons(draft) {
+  const existingKeys = new Set(
+    form.persons.map((p) => normalizePersonKey(p.name, p.birth_date)),
+  )
+  let added = 0
+  let skipped = 0
+  for (const raw of draft.persons || []) {
+    const person = mapImportedPerson(raw, form.start_date, form.end_date)
+    const key = normalizePersonKey(person.name, person.birth_date)
+    if (!person.name || !person.birth_date) {
+      skipped += 1
+      continue
+    }
+    if (existingKeys.has(key)) {
+      skipped += 1
+      continue
+    }
+    form.persons.push(person)
+    existingKeys.add(key)
+    added += 1
+  }
+  return { added, skipped }
+}
+
+function triggerImport() {
+  if (!canImportGaesteblatt.value) return
+  importInput.value?.click()
+}
+
+async function onImportFile(event) {
+  const file = event.target.files?.[0]
+  event.target.value = ''
+  if (!file) return
+  importing.value = true
+  error.value = ''
+  importHint.value = ''
+  importWarnings.value = []
+  try {
+    const draft = await api.parseGaesteblatt(file)
+    const parseWarnings = draft.warnings || []
+    if (isExisting.value) {
+      const { added, skipped } = mergeImportedPersons(draft)
+      activeTab.value = 'persons'
+      const hints = [
+        added
+          ? `${added} Person(en) neu importiert.`
+          : 'Keine neuen Personen zum Import gefunden.',
+      ]
+      if (skipped && added) {
+        hints.push(`${skipped} bereits vorhandene/unvollständige Einträge übersprungen.`)
+      }
+      importHint.value = hints.join(' ')
+      if (parseWarnings.length) {
+        error.value = parseWarnings.join(' ')
+      }
+    } else {
+      applyFullImport(draft)
+      activeTab.value = 'persons'
+      importHint.value = `${(draft.persons || []).length} Person(en) aus Gästeblatt übernommen.`
+      if (parseWarnings.length) {
+        error.value = parseWarnings.join(' ')
+      }
+      if (form.start_date && form.end_date) {
+        await Promise.all([
+          reloadPitches({ clearSelection: true }),
+          reloadServices(),
+        ])
+      }
+    }
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    importing.value = false
+  }
+}
+
 function applyBookingToForm(booking) {
   form.group_name = booking.group_name
+  form.group_leader = booking.group_leader || ''
   form.start_date = booking.start_date
   form.end_date = booking.end_date
   originalStartDate.value = booking.start_date
@@ -478,6 +657,8 @@ function applyBookingToForm(booking) {
     name: p.name,
     birth_date: p.birth_date,
     nationality: p.nationality,
+    travel_document: p.travel_document || '',
+    price_profile_id: p.price_profile_id ?? defaultPriceProfileId(),
     start_date: p.start_date || booking.start_date,
     end_date: p.end_date || booking.end_date,
   }))
@@ -542,7 +723,10 @@ watch(
 )
 
 onMounted(async () => {
-  countries.value = await api.countries()
+  const [meta, profiles] = await Promise.all([api.getMeta(), api.listPriceProfiles()])
+  countries.value = meta.countries || []
+  homeCountry.value = meta.home_country || 'AT'
+  priceProfiles.value = profiles
 })
 
 async function saveNotes() {
@@ -619,11 +803,18 @@ async function reloadServices() {
   }
 }
 
+function defaultPriceProfileId() {
+  const def = priceProfiles.value.find((p) => p.is_default)
+  return def?.id ?? priceProfiles.value[0]?.id ?? null
+}
+
 function addPerson() {
   form.persons.push({
     name: '',
     birth_date: '',
-    nationality: 'AT',
+    nationality: homeCountry.value || 'AT',
+    travel_document: '',
+    price_profile_id: defaultPriceProfileId(),
     start_date: form.start_date || '',
     end_date: form.end_date || '',
   })
@@ -673,6 +864,7 @@ async function saveBooking() {
     if (isExisting.value) {
       await api.updateBooking(props.bookingId, {
         group_name: form.group_name,
+        group_leader: form.group_leader || '',
         start_date: form.start_date,
         end_date: form.end_date,
         pitch_ids: form.pitch_ids,
@@ -683,6 +875,7 @@ async function saveBooking() {
     } else {
       await api.createBooking({
         group_name: form.group_name,
+        group_leader: form.group_leader || '',
         start_date: form.start_date,
         end_date: form.end_date,
         pitch_ids: form.pitch_ids,
@@ -712,7 +905,13 @@ async function submit() {
   }
   if (form.persons.length) {
     const incomplete = form.persons.some(
-      (p) => !p.name?.trim() || !p.birth_date || !p.nationality || !p.start_date || !p.end_date,
+      (p) =>
+        !p.name?.trim() ||
+        !p.birth_date ||
+        !p.nationality ||
+        !p.price_profile_id ||
+        !p.start_date ||
+        !p.end_date,
     )
     if (incomplete) {
       activeTab.value = 'persons'

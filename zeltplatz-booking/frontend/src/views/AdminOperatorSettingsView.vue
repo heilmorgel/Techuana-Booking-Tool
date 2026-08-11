@@ -33,6 +33,17 @@
           autocomplete="off"
         />
       </label>
+      <label>
+        Heimatland
+        <select v-model="form.home_country">
+          <option v-for="c in countries" :key="c.code" :value="c.code">
+            {{ c.code }} — {{ c.name }}
+          </option>
+        </select>
+        <span class="muted tiny">
+          Reisedokument in der Personenliste nur bei abweichender Staatsangehörigkeit
+        </span>
+      </label>
 
       <div class="logo-block">
         <div class="logo-preview" v-if="hasLogo">
@@ -73,7 +84,9 @@ const form = reactive({
   organization_name: '',
   address: '',
   iban: '',
+  home_country: 'AT',
 })
+const countries = ref([])
 const hasLogo = ref(false)
 const logoSrc = ref('')
 const error = ref('')
@@ -87,10 +100,12 @@ function refreshLogoSrc() {
 
 async function load() {
   error.value = ''
-  const data = await api.getOperatorSettings()
+  const [data, countryList] = await Promise.all([api.getOperatorSettings(), api.countries()])
+  countries.value = countryList
   form.organization_name = data.organization_name || ''
   form.address = data.address || ''
   form.iban = data.iban || ''
+  form.home_country = data.home_country || 'AT'
   hasLogo.value = Boolean(data.has_logo)
   refreshLogoSrc()
 }
@@ -104,10 +119,12 @@ async function save() {
       organization_name: form.organization_name,
       address: form.address,
       iban: form.iban,
+      home_country: form.home_country,
     })
     form.organization_name = data.organization_name || ''
     form.address = data.address || ''
     form.iban = data.iban || ''
+    form.home_country = data.home_country || 'AT'
     hasLogo.value = Boolean(data.has_logo)
     savedHint.value = 'Gespeichert.'
   } catch (e) {

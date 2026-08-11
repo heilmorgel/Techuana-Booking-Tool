@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-from sqlalchemy import Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, Numeric, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -62,6 +62,8 @@ class Booking(Base):
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
     notes: Mapped[str] = mapped_column(String(2000), nullable=False, default="")
+    group_leader: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    invoice_number: Mapped[str | None] = mapped_column(String(32), nullable=True, unique=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -85,6 +87,12 @@ class Booking(Base):
         back_populates="booking",
         cascade="all, delete-orphan",
         order_by="BookingService.id",
+    )
+    custom_invoice_lines: Mapped[list["InvoiceCustomLine"]] = relationship(
+        "InvoiceCustomLine",
+        back_populates="booking",
+        cascade="all, delete-orphan",
+        order_by="InvoiceCustomLine.sort_order, InvoiceCustomLine.id",
     )
     amendments: Mapped[list[BookingAmendment]] = relationship(
         "BookingAmendment",
@@ -121,6 +129,23 @@ class BookingService(Base):
     service: Mapped[Service] = relationship("Service", back_populates="booking_services")
 
 
+class PriceProfile(Base):
+    __tablename__ = "price_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    elements: Mapped[list[PersonFeeElement]] = relationship(
+        "PersonFeeElement",
+        back_populates="price_profile",
+        cascade="all, delete-orphan",
+        order_by="PersonFeeElement.sort_order, PersonFeeElement.name",
+    )
+    persons: Mapped[list[Person]] = relationship("Person", back_populates="price_profile")
+
+
 class Person(Base):
     __tablename__ = "persons"
 
@@ -129,10 +154,15 @@ class Person(Base):
     name: Mapped[str] = mapped_column(String(200), nullable=False)
     birth_date: Mapped[date] = mapped_column(Date, nullable=False)
     nationality: Mapped[str] = mapped_column(String(2), nullable=False)
+    travel_document: Mapped[str] = mapped_column(String(500), nullable=False, default="")
     start_date: Mapped[date] = mapped_column(Date, nullable=False)
     end_date: Mapped[date] = mapped_column(Date, nullable=False)
+    price_profile_id: Mapped[int] = mapped_column(
+        ForeignKey("price_profiles.id", ondelete="RESTRICT"), nullable=False
+    )
 
     booking: Mapped[Booking] = relationship("Booking", back_populates="persons")
+    price_profile: Mapped[PriceProfile] = relationship("PriceProfile", back_populates="persons")
 
 
 class BookingAmendment(Base):
@@ -154,13 +184,20 @@ class BookingAmendment(Base):
 
 class PersonFeeElement(Base):
     __tablename__ = "person_fee_elements"
+    __table_args__ = (
+        UniqueConstraint("price_profile_id", "name", name="uq_person_fee_element_profile_name"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
-    name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
+    price_profile_id: Mapped[int] = mapped_column(
+        ForeignKey("price_profiles.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
     kind: Mapped[str] = mapped_column(String(20), nullable=False)  # fixed | age_based
     daily_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    price_profile: Mapped[PriceProfile] = relationship("PriceProfile", back_populates="elements")
     brackets: Mapped[list[PersonFeeBracket]] = relationship(
         "PersonFeeBracket",
         back_populates="element",
@@ -183,6 +220,20 @@ class PersonFeeBracket(Base):
     element: Mapped[PersonFeeElement] = relationship("PersonFeeElement", back_populates="brackets")
 
 
+class InvoiceCustomLine(Base):
+    """Manual invoice positions: surcharge, discount, or zero-amount note."""
+
+    __tablename__ = "invoice_custom_lines"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    booking_id: Mapped[int] = mapped_column(ForeignKey("bookings.id", ondelete="CASCADE"), nullable=False)
+    label: Mapped[str] = mapped_column(String(500), nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
+    sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    booking: Mapped[Booking] = relationship("Booking", back_populates="custom_invoice_lines")
+
+
 class OperatorSettings(Base):
     """Singleton row (id=1) for invoice header/footer branding."""
 
@@ -193,3 +244,4 @@ class OperatorSettings(Base):
     address: Mapped[str] = mapped_column(Text, nullable=False, default="")
     iban: Mapped[str] = mapped_column(String(64), nullable=False, default="")
     logo_filename: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    home_country: Mapped[str] = mapped_column(String(2), nullable=False, default="AT")

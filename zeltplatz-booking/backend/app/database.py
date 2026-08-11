@@ -69,6 +69,23 @@ def init_db() -> None:
                     "NOT NULL DEFAULT ''"
                 )
             )
+        if booking_cols and "invoice_number" not in booking_cols:
+            conn.execute(
+                text("ALTER TABLE bookings ADD COLUMN invoice_number VARCHAR(32)")
+            )
+            conn.execute(
+                text(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS uq_bookings_invoice_number "
+                    "ON bookings (invoice_number)"
+                )
+            )
+        if booking_cols and "group_leader" not in booking_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE bookings ADD COLUMN group_leader TEXT "
+                    "NOT NULL DEFAULT ''"
+                )
+            )
 
         pitch_cols = _table_cols(conn, "pitches")
         if pitch_cols and "daily_price" not in pitch_cols:
@@ -106,6 +123,15 @@ def init_db() -> None:
                         WHERE bookings.id = persons.booking_id
                     )
                     """
+                )
+            )
+        # Re-read columns after possible start/end upgrades
+        person_cols = _table_cols(conn, "persons")
+        if person_cols and "travel_document" not in person_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE persons ADD COLUMN travel_document VARCHAR(500) "
+                    "NOT NULL DEFAULT ''"
                 )
             )
 
@@ -174,14 +200,94 @@ def init_db() -> None:
         # Seed singleton operator settings when table exists but empty
         op_cols = _table_cols(conn, "operator_settings")
         if op_cols:
+            if "home_country" not in op_cols:
+                conn.execute(
+                    text(
+                        "ALTER TABLE operator_settings ADD COLUMN home_country VARCHAR(2) "
+                        "NOT NULL DEFAULT 'AT'"
+                    )
+                )
+                op_cols = _table_cols(conn, "operator_settings")
             count = conn.execute(text("SELECT COUNT(*) FROM operator_settings")).scalar()
             if not count:
                 conn.execute(
                     text(
                         """
                         INSERT INTO operator_settings
-                            (id, organization_name, address, iban, logo_filename)
-                        VALUES (1, '', '', '', NULL)
+                            (id, organization_name, address, iban, logo_filename, home_country)
+                        VALUES (1, '', '', '', NULL, 'AT')
                         """
                     )
+                )
+
+        # Price profiles + soft-upgrade for existing DBs
+        profile_cols = _table_cols(conn, "price_profiles")
+        if not profile_cols:
+            conn.execute(
+                text(
+                    """
+                    CREATE TABLE price_profiles (
+                        id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+                        name VARCHAR(120) NOT NULL UNIQUE,
+                        is_default BOOLEAN NOT NULL DEFAULT 0,
+                        sort_order INTEGER NOT NULL DEFAULT 0
+                    )
+                    """
+                )
+            )
+            profile_cols = _table_cols(conn, "price_profiles")
+
+        if profile_cols:
+            count = conn.execute(text("SELECT COUNT(*) FROM price_profiles")).scalar()
+            if not count:
+                conn.execute(
+                    text(
+                        """
+                        INSERT INTO price_profiles (name, is_default, sort_order)
+                        VALUES ('Standard', 1, 0)
+                        """
+                    )
+                )
+            default_id = conn.execute(
+                text("SELECT id FROM price_profiles WHERE is_default = 1 LIMIT 1")
+            ).scalar()
+            if default_id is None:
+                default_id = conn.execute(
+                    text("SELECT id FROM price_profiles ORDER BY sort_order, name LIMIT 1")
+                ).scalar()
+                if default_id is not None:
+                    conn.execute(
+                        text("UPDATE price_profiles SET is_default = 1 WHERE id = :id"),
+                        {"id": default_id},
+                    )
+
+            fee_cols = _table_cols(conn, "person_fee_elements")
+            if fee_cols and "price_profile_id" not in fee_cols and default_id is not None:
+                conn.execute(
+                    text(
+                        "ALTER TABLE person_fee_elements ADD COLUMN price_profile_id "
+                        "INTEGER REFERENCES price_profiles(id) ON DELETE CASCADE"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "UPDATE person_fee_elements SET price_profile_id = :id "
+                        "WHERE price_profile_id IS NULL"
+                    ),
+                    {"id": default_id},
+                )
+
+            person_cols = _table_cols(conn, "persons")
+            if person_cols and "price_profile_id" not in person_cols and default_id is not None:
+                conn.execute(
+                    text(
+                        "ALTER TABLE persons ADD COLUMN price_profile_id "
+                        "INTEGER REFERENCES price_profiles(id) ON DELETE RESTRICT"
+                    )
+                )
+                conn.execute(
+                    text(
+                        "UPDATE persons SET price_profile_id = :id WHERE price_profile_id IS NULL"
+                    ),
+                    {"id": default_id},
                 )

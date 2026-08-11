@@ -31,6 +31,7 @@ from app.models import (
     PersonFeeBracket,
     PersonFeeElement,
     Pitch,
+    PriceProfile,
     Service,
     ServiceGroup,
 )
@@ -99,19 +100,40 @@ def seed() -> None:
         db.add_all(services)
         db.flush()
 
+        standard = PriceProfile(name="Standard", is_default=True, sort_order=0)
+        reduced = PriceProfile(name="Ermäßigt", is_default=False, sort_order=1)
+        db.add_all([standard, reduced])
+        db.flush()
+
         tax = PersonFeeElement(
+            price_profile_id=standard.id,
             name="Tourismusabgabe",
             kind="fixed",
             daily_price=1.5,
             sort_order=1,
         )
         lager = PersonFeeElement(
+            price_profile_id=standard.id,
             name="Lagerbeitrag",
             kind="age_based",
             daily_price=0,
             sort_order=2,
         )
-        db.add_all([tax, lager])
+        reduced_tax = PersonFeeElement(
+            price_profile_id=reduced.id,
+            name="Tourismusabgabe",
+            kind="fixed",
+            daily_price=0.5,
+            sort_order=1,
+        )
+        reduced_lager = PersonFeeElement(
+            price_profile_id=reduced.id,
+            name="Lagerbeitrag",
+            kind="fixed",
+            daily_price=2,
+            sort_order=2,
+        )
+        db.add_all([tax, lager, reduced_tax, reduced_lager])
         db.flush()
         db.add_all(
             [
@@ -139,6 +161,7 @@ def seed() -> None:
                 nationality="AT",
                 start_date=past_start,
                 end_date=past_end,
+                price_profile_id=standard.id,
             ),
             Person(
                 name="Ben Berger",
@@ -146,6 +169,7 @@ def seed() -> None:
                 nationality="AT",
                 start_date=past_start,
                 end_date=past_end,
+                price_profile_id=reduced.id,
             ),
         ]
         past.booking_services = [
@@ -178,6 +202,7 @@ def seed() -> None:
                 nationality="AT",
                 start_date=run_start,
                 end_date=run_end,
+                price_profile_id=standard.id,
             ),
             Person(
                 name="Eva Beispiel",
@@ -185,6 +210,7 @@ def seed() -> None:
                 nationality="DE",
                 start_date=run_start,
                 end_date=run_end,
+                price_profile_id=standard.id,
             ),
             Person(
                 name="Leo Kurz",
@@ -192,6 +218,7 @@ def seed() -> None:
                 nationality="AT",
                 start_date=run_start + timedelta(days=1),
                 end_date=run_end - timedelta(days=1),
+                price_profile_id=reduced.id,
             ),
         ]
         running.booking_services = [
@@ -236,6 +263,7 @@ def seed() -> None:
                 nationality="AT",
                 start_date=fut_start,
                 end_date=fut_end,
+                price_profile_id=standard.id,
             ),
         ]
         future.booking_services = [
@@ -274,7 +302,8 @@ def seed() -> None:
         print(f"DB zurückgesetzt und befüllt: {DATA / 'booking.db'}")
         print(f"  Plätze: {len(pitches)}")
         print(f"  Dienste: {len(services)} in 2 Gruppen")
-        print("  Personenpreise: Tourismusabgabe + Lagerbeitrag")
+        print("  Preisprofile: Standard (Default) + Ermäßigt")
+        print("  Personenpreise: Tourismusabgabe + Lagerbeitrag (pro Profil)")
         print("  Buchungen: 4 (Vergangenheit, laufend, Zukunft, Anreise heute)")
     finally:
         db.close()

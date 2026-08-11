@@ -39,13 +39,20 @@ class PersonBase(BaseModel):
     name: str = Field(min_length=1, max_length=200)
     birth_date: date
     nationality: str = Field(min_length=2, max_length=2)
+    travel_document: str = Field(default="", max_length=500)
     start_date: date | None = None
     end_date: date | None = None
+    price_profile_id: int | None = None
 
     @field_validator("nationality")
     @classmethod
     def uppercase_nationality(cls, value: str) -> str:
         return value.upper()
+
+    @field_validator("travel_document")
+    @classmethod
+    def strip_travel_document(cls, value: str) -> str:
+        return (value or "").strip()
 
     @model_validator(mode="after")
     def check_person_dates(self) -> PersonBase:
@@ -64,6 +71,7 @@ class PersonRead(PersonBase):
     id: int
     start_date: date
     end_date: date
+    price_profile_id: int
 
 
 class BookingServiceItem(BaseModel):
@@ -122,6 +130,7 @@ class BookingCreate(BaseModel):
     persons: list[PersonCreate] = Field(default_factory=list)
     services: list[BookingServiceItem] = Field(default_factory=list)
     notes: str = Field(default="", max_length=2000)
+    group_leader: str = Field(default="", max_length=4000)
 
     @model_validator(mode="after")
     def check_dates(self) -> BookingCreate:
@@ -138,6 +147,7 @@ class BookingUpdate(BaseModel):
     persons: list[PersonCreate] | None = None
     services: list[BookingServiceItem] | None = None
     notes: str | None = Field(default=None, max_length=2000)
+    group_leader: str | None = Field(default=None, max_length=4000)
 
 
 class BookingRead(BaseModel):
@@ -149,12 +159,31 @@ class BookingRead(BaseModel):
     end_date: date
     created_at: datetime
     notes: str = ""
+    group_leader: str = ""
     pitch_ids: list[int] = []
     pitch_segments: list[BookingPitchSegmentRead] = []
     persons: list[PersonRead] = []
     services: list[BookingServiceRead] = []
     amendments: list[BookingAmendmentRead] = []
     warnings: list[str] = []
+
+
+class GaesteblattPersonDraft(BaseModel):
+    name: str
+    birth_date: date | None = None
+    nationality: str = "AT"
+    travel_document: str = ""
+    start_date: date | None = None
+    end_date: date | None = None
+
+
+class GaesteblattImportDraft(BaseModel):
+    group_name: str = ""
+    start_date: date | None = None
+    end_date: date | None = None
+    group_leader: str = ""
+    persons: list[GaesteblattPersonDraft] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
 
 
 class BookingGanttItem(BaseModel):
@@ -218,6 +247,27 @@ class ServiceAvailabilityRead(BaseModel):
     remaining: int
 
 
+class PriceProfileCreate(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    is_default: bool = False
+    sort_order: int = 0
+
+
+class PriceProfileUpdate(BaseModel):
+    name: str | None = Field(default=None, min_length=1, max_length=120)
+    is_default: bool | None = None
+    sort_order: int | None = None
+
+
+class PriceProfileRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    is_default: bool = False
+    sort_order: int = 0
+
+
 class PersonFeeBracketCreate(BaseModel):
     age_from: int = Field(ge=0)
     age_to_exclusive: int | None = Field(default=None, ge=0)
@@ -237,6 +287,7 @@ class PersonFeeBracketRead(PersonFeeBracketCreate):
 
 
 class PersonFeeElementCreate(BaseModel):
+    price_profile_id: int
     name: str = Field(min_length=1, max_length=120)
     kind: str = Field(pattern="^(fixed|age_based)$")
     daily_price: float = Field(ge=0, default=0)
@@ -264,6 +315,7 @@ class PersonFeeElementRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    price_profile_id: int
     name: str
     kind: str
     daily_price: float = 0
@@ -280,6 +332,7 @@ class InvoiceLine(BaseModel):
     amount: float
     start_date: date | None = None
     end_date: date | None = None
+    id: int | None = None
 
 
 class InvoiceOperator(BaseModel):
@@ -291,6 +344,7 @@ class InvoiceOperator(BaseModel):
 
 class InvoiceRead(BaseModel):
     booking_id: int
+    invoice_number: str | None = None
     group_name: str
     start_date: date
     end_date: date
@@ -300,8 +354,29 @@ class InvoiceRead(BaseModel):
     operator: InvoiceOperator = InvoiceOperator()
 
 
+class InvoiceCustomLineCreate(BaseModel):
+    label: str = Field(min_length=1, max_length=500)
+    amount: float = 0
+
+
+class InvoiceCustomLineUpdate(BaseModel):
+    label: str | None = Field(default=None, min_length=1, max_length=500)
+    amount: float | None = None
+
+
+class InvoiceCustomLineRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    booking_id: int
+    label: str
+    amount: float
+    sort_order: int = 0
+
+
 class BillingListItem(BaseModel):
     booking_id: int
+    invoice_number: str | None = None
     group_name: str
     start_date: date
     end_date: date
@@ -313,6 +388,12 @@ class OperatorSettingsUpdate(BaseModel):
     organization_name: str | None = Field(default=None, max_length=200)
     address: str | None = None
     iban: str | None = Field(default=None, max_length=64)
+    home_country: str | None = Field(default=None, min_length=2, max_length=2)
+
+    @field_validator("home_country")
+    @classmethod
+    def uppercase_home_country(cls, value: str | None) -> str | None:
+        return value.upper() if value is not None else None
 
 
 class OperatorSettingsRead(BaseModel):
@@ -322,3 +403,4 @@ class OperatorSettingsRead(BaseModel):
     address: str = ""
     iban: str = ""
     has_logo: bool = False
+    home_country: str = "AT"

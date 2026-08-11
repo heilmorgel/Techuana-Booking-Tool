@@ -21,6 +21,7 @@ def _to_read(row) -> OperatorSettingsRead:
         address=row.address or "",
         iban=row.iban or "",
         has_logo=bool(row.logo_filename and op_svc.logo_path(row).is_file()),
+        home_country=(row.home_country or "AT").upper(),
     )
 
 
@@ -42,6 +43,13 @@ def update_settings(
         row.address = data["address"].strip()
     if "iban" in data and data["iban"] is not None:
         row.iban = data["iban"].strip().replace(" ", "").upper()
+    if "home_country" in data and data["home_country"] is not None:
+        code = data["home_country"].strip().upper()
+        from app.countries import VALID_NATIONALITY_CODES
+
+        if code not in VALID_NATIONALITY_CODES:
+            raise HTTPException(status_code=422, detail=f"Invalid home_country: {code}")
+        row.home_country = code
     db.add(row)
     db.commit()
     db.refresh(row)
@@ -64,17 +72,6 @@ async def upload_logo(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> OperatorSettingsRead:
-    # #region agent log
-    try:
-        import json, time
-        from pathlib import Path as _P
-        _log = _P(__file__).resolve().parents[4] / ".cursor" / "debug-188c80.log"
-        _log.parent.mkdir(parents=True, exist_ok=True)
-        with _log.open("a", encoding="utf-8") as _f:
-            _f.write(json.dumps({"sessionId":"188c80","runId":"pre-fix","hypothesisId":"C","location":"operator_settings.py:upload_logo","message":"upload_logo entered","data":{"filename":file.filename,"content_type":file.content_type},"timestamp":int(time.time()*1000)})+"\n")
-    except Exception:
-        pass
-    # #endregion
     filename = file.filename or "logo.png"
     ext = Path(filename).suffix.lower()
     if ext not in op_svc.ALLOWED_LOGO_EXTENSIONS:
@@ -97,16 +94,6 @@ async def upload_logo(
     db.add(row)
     db.commit()
     db.refresh(row)
-    # #region agent log
-    try:
-        import json, time
-        from pathlib import Path as _P
-        _log = _P(__file__).resolve().parents[4] / ".cursor" / "debug-188c80.log"
-        with _log.open("a", encoding="utf-8") as _f:
-            _f.write(json.dumps({"sessionId":"188c80","runId":"pre-fix","hypothesisId":"C","location":"operator_settings.py:upload_logo:ok","message":"upload_logo saved","data":{"stored_name":stored_name,"bytes":len(content),"dest_exists":dest.is_file()},"timestamp":int(time.time()*1000)})+"\n")
-    except Exception:
-        pass
-    # #endregion
     return _to_read(row)
 
 

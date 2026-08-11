@@ -26,6 +26,7 @@ def list_billing(
         selectinload(Booking.booking_services)
         .selectinload(BookingService.service)
         .selectinload(Service.group),
+        selectinload(Booking.custom_invoice_lines),
     )
     bookings = list(db.scalars(stmt).unique().all())
     if from_date is not None or to_date is not None:
@@ -39,6 +40,7 @@ def list_billing(
         items.append(
             BillingListItem(
                 booking_id=booking.id,
+                invoice_number=booking.invoice_number,
                 group_name=booking.group_name,
                 start_date=booking.start_date,
                 end_date=booking.end_date,

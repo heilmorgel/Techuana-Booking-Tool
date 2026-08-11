@@ -12,3 +12,4 @@ venv/
 **/.venv/
 *.pyc
 .DS_Store
+Samples/

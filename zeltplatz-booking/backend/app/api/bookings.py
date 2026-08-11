@@ -2,14 +2,23 @@ from __future__ import annotations
 
 from datetime import date
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.countries import VALID_NATIONALITY_CODES
 from app.database import get_db
-from app.models import Booking, BookingPitch, BookingService, Person, Service
+from app.models import (
+    Booking,
+    BookingPitch,
+    BookingService,
+    InvoiceCustomLine,
+    Person,
+    PriceProfile,
+    Service,
+)
+from app.api.price_profiles import require_default_profile
 from app.schemas import (
     BookingAmendRequest,
     BookingAmendmentRead,
@@ -19,12 +28,17 @@ from app.schemas import (
     BookingRead,
     BookingServiceRead,
     BookingUpdate,
+    GaesteblattImportDraft,
+    InvoiceCustomLineCreate,
+    InvoiceCustomLineRead,
+    InvoiceCustomLineUpdate,
     InvoiceRead,
     PersonCreate,
 )
 from app.services.amendments import apply_amendment
 from app.services.availability import assert_pitches_bookable, pitch_ids_active_from
 from app.services.billing import build_invoice, load_booking_for_invoice
+from app.services.gaesteblatt import parse_gaesteblatt_bytes
 from app.services.invoice_pdf import render_invoice_pdf
 from app.services.operator_settings import get_or_create_operator_settings, logo_path
 from app.services.service_availability import check_services
@@ -42,15 +56,27 @@ def _booking_amendable(booking: Booking) -> bool:
 
 
 def _validate_persons(
+    db: Session,
     persons: list[PersonCreate],
     booking_start: date,
     booking_end: date,
 ) -> None:
+    profile_ids = {p.price_profile_id for p in persons if p.price_profile_id is not None}
+    existing_ids: set[int] = set()
+    if profile_ids:
+        existing_ids = set(
+            db.scalars(select(PriceProfile.id).where(PriceProfile.id.in_(profile_ids))).all()
+        )
     for person in persons:
         if person.nationality not in VALID_NATIONALITY_CODES:
             raise HTTPException(
                 status_code=422,
                 detail=f"Invalid nationality code: {person.nationality}",
+            )
+        if person.price_profile_id is not None and person.price_profile_id not in existing_ids:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Price profile {person.price_profile_id} not found",
             )
         start = person.start_date or booking_start
         end = person.end_date or booking_end
@@ -69,13 +95,20 @@ def _validate_persons(
             )
 
 
-def _person_model(person: PersonCreate, booking_start: date, booking_end: date) -> Person:
+def _person_model(
+    person: PersonCreate,
+    booking_start: date,
+    booking_end: date,
+    default_profile_id: int,
+) -> Person:
     return Person(
         name=person.name,
         birth_date=person.birth_date,
         nationality=person.nationality,
+        travel_document=person.travel_document or "",
         start_date=person.start_date or booking_start,
         end_date=person.end_date or booking_end,
+        price_profile_id=person.price_profile_id or default_profile_id,
     )
 
 
@@ -157,6 +190,7 @@ def booking_to_read(booking: Booking, warnings: list[str] | None = None) -> Book
         end_date=booking.end_date,
         created_at=booking.created_at,
         notes=booking.notes or "",
+        group_leader=booking.group_leader or "",
         pitch_ids=pitch_ids,
         pitch_segments=segments,
         persons=booking.persons,
@@ -240,7 +274,7 @@ def gantt_items(
 
 @router.post("", response_model=BookingRead, status_code=status.HTTP_201_CREATED)
 def create_booking(payload: BookingCreate, db: Session = Depends(get_db)) -> BookingRead:
-    _validate_persons(payload.persons, payload.start_date, payload.end_date)
+    _validate_persons(db, payload.persons, payload.start_date, payload.end_date)
     pitches = assert_pitches_bookable(db, payload.pitch_ids, payload.start_date, payload.end_date)
     booking_services = _resolve_booking_services(
         db, payload.services, payload.start_date, payload.end_date
@@ -251,11 +285,13 @@ def create_booking(payload: BookingCreate, db: Session = Depends(get_db)) -> Boo
         payload.end_date,
         [(bs.service_id, bs.quantity) for bs in booking_services],
     )
+    default_profile_id = require_default_profile(db).id
     booking = Booking(
         group_name=payload.group_name,
         start_date=payload.start_date,
         end_date=payload.end_date,
         notes=payload.notes or "",
+        group_leader=payload.group_leader or "",
         booking_pitches=[
             BookingPitch(
                 pitch_id=p.id,
@@ -265,7 +301,8 @@ def create_booking(payload: BookingCreate, db: Session = Depends(get_db)) -> Boo
             for p in pitches
         ],
         persons=[
-            _person_model(p, payload.start_date, payload.end_date) for p in payload.persons
+            _person_model(p, payload.start_date, payload.end_date, default_profile_id)
+            for p in payload.persons
         ],
         booking_services=booking_services,
     )
@@ -274,12 +311,78 @@ def create_booking(payload: BookingCreate, db: Session = Depends(get_db)) -> Boo
     return booking_to_read(_load_booking(db, booking.id), warnings=warnings)
 
 
+@router.post("/parse-gaesteblatt", response_model=GaesteblattImportDraft)
+async def parse_gaesteblatt(file: UploadFile = File(...)) -> GaesteblattImportDraft:
+    # #region agent log
+    import json as _json
+    import time as _time
+    from pathlib import Path as _Path
+
+    _log_path = _Path(r"d:\Coding\Techuana_Homeassistant\debug-ad5dd0.log")
+
+    def _dbg(hyp: str, loc: str, msg: str, data: dict) -> None:
+        try:
+            with _log_path.open("a", encoding="utf-8") as _f:
+                _f.write(
+                    _json.dumps(
+                        {
+                            "sessionId": "ad5dd0",
+                            "runId": "repro",
+                            "hypothesisId": hyp,
+                            "location": loc,
+                            "message": msg,
+                            "data": data,
+                            "timestamp": int(_time.time() * 1000),
+                        },
+                        ensure_ascii=False,
+                    )
+                    + "\n"
+                )
+        except Exception:
+            pass
+
+    # #endregion
+    filename = (file.filename or "").lower()
+    _dbg("D", "bookings.py:parse_gaesteblatt:entry", "parse endpoint entered", {"filename": filename})
+    if filename and not filename.endswith((".xlsx", ".xltx", ".xlsm")):
+        raise HTTPException(
+            status_code=422,
+            detail="Bitte eine Excel-Datei (.xlsx / .xltx) hochladen",
+        )
+    t0 = _time.perf_counter()
+    content = await file.read()
+    _dbg(
+        "D",
+        "bookings.py:parse_gaesteblatt:read",
+        "file bytes read",
+        {"bytes": len(content), "seconds": round(_time.perf_counter() - t0, 3)},
+    )
+    try:
+        t1 = _time.perf_counter()
+        draft = parse_gaesteblatt_bytes(content)
+        _dbg(
+            "B",
+            "bookings.py:parse_gaesteblatt:done",
+            "parse finished",
+            {
+                "seconds": round(_time.perf_counter() - t1, 3),
+                "group_name": draft.group_name,
+                "person_count": len(draft.persons),
+                "has_dates": bool(draft.start_date and draft.end_date),
+            },
+        )
+        return draft
+    except ValueError as exc:
+        _dbg("B", "bookings.py:parse_gaesteblatt:error", "parse failed", {"error": str(exc)})
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
 @router.get("/{booking_id}/invoice", response_model=InvoiceRead)
 def get_invoice(booking_id: int, db: Session = Depends(get_db)) -> InvoiceRead:
     booking = load_booking_for_invoice(db, booking_id)
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
-    return build_invoice(db, booking)
+    return build_invoice(db, booking, assign_number=True)
 
 
 @router.get("/{booking_id}/invoice.pdf")
@@ -287,53 +390,94 @@ def get_invoice_pdf(booking_id: int, db: Session = Depends(get_db)) -> Response:
     booking = load_booking_for_invoice(db, booking_id)
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
-    invoice = build_invoice(db, booking)
+    invoice = build_invoice(db, booking, assign_number=True)
     row = get_or_create_operator_settings(db)
     path = logo_path(row)
     logo = path if row.logo_filename and path.is_file() else None
-    # #region agent log
-    try:
-        import json, time
-        from pathlib import Path as _P
-        from app.config import get_settings as _gs
-        _payload = {
-            "sessionId": "188c80",
-            "runId": "post-fix",
-            "hypothesisId": "A",
-            "location": "bookings.py:get_invoice_pdf",
-            "message": "pdf logo resolve",
-            "data": {
-                "booking_id": booking_id,
-                "data_dir": str(_gs().data_dir),
-                "logo_filename": row.logo_filename,
-                "path": str(path),
-                "exists": path.is_file() if row.logo_filename else False,
-                "passed": logo is not None,
-            },
-            "timestamp": int(time.time() * 1000),
-        }
-        for _log in (
-            _P(__file__).resolve().parents[4] / ".cursor" / "debug-188c80.log",
-            _P(_gs().data_dir) / "pdf_debug.ndjson",
-        ):
-            _log.parent.mkdir(parents=True, exist_ok=True)
-            with _log.open("a", encoding="utf-8") as _f:
-                _f.write(json.dumps(_payload) + "\n")
-    except Exception as _e:
-        try:
-            from app.config import get_settings as _gs2
-            from pathlib import Path as _P2
-            (_P2(_gs2().data_dir) / "pdf_debug_err.txt").write_text(repr(_e), encoding="utf-8")
-        except Exception:
-            pass
-    # #endregion
     pdf = render_invoice_pdf(invoice, logo_file=logo)
-    filename = f"rechnung-{booking_id}.pdf"
+    number = invoice.invoice_number or str(booking_id)
+    filename = f"rechnung-{number}.pdf"
     return Response(
         content=pdf,
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
     )
+
+
+def _money_amount(value: float) -> float:
+    from decimal import Decimal, ROUND_HALF_UP
+
+    return float(Decimal(str(value)).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
+
+
+@router.post(
+    "/{booking_id}/invoice/custom-lines",
+    response_model=InvoiceCustomLineRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_custom_invoice_line(
+    booking_id: int,
+    body: InvoiceCustomLineCreate,
+    db: Session = Depends(get_db),
+) -> InvoiceCustomLine:
+    booking = db.get(Booking, booking_id)
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    label = body.label.strip()
+    if not label:
+        raise HTTPException(status_code=422, detail="Label must not be empty")
+    max_order = max((line.sort_order for line in booking.custom_invoice_lines), default=-1)
+    row = InvoiceCustomLine(
+        booking_id=booking_id,
+        label=label,
+        amount=_money_amount(body.amount),
+        sort_order=max_order + 1,
+    )
+    db.add(row)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.patch(
+    "/{booking_id}/invoice/custom-lines/{line_id}",
+    response_model=InvoiceCustomLineRead,
+)
+def update_custom_invoice_line(
+    booking_id: int,
+    line_id: int,
+    body: InvoiceCustomLineUpdate,
+    db: Session = Depends(get_db),
+) -> InvoiceCustomLine:
+    row = db.get(InvoiceCustomLine, line_id)
+    if not row or row.booking_id != booking_id:
+        raise HTTPException(status_code=404, detail="Custom invoice line not found")
+    if body.label is not None:
+        label = body.label.strip()
+        if not label:
+            raise HTTPException(status_code=422, detail="Label must not be empty")
+        row.label = label
+    if body.amount is not None:
+        row.amount = _money_amount(body.amount)
+    db.commit()
+    db.refresh(row)
+    return row
+
+
+@router.delete(
+    "/{booking_id}/invoice/custom-lines/{line_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_custom_invoice_line(
+    booking_id: int,
+    line_id: int,
+    db: Session = Depends(get_db),
+) -> None:
+    row = db.get(InvoiceCustomLine, line_id)
+    if not row or row.booking_id != booking_id:
+        raise HTTPException(status_code=404, detail="Custom invoice line not found")
+    db.delete(row)
+    db.commit()
 
 
 @router.get("/{booking_id}/amendments", response_model=list[BookingAmendmentRead])
@@ -372,7 +516,7 @@ def amend_booking(
     if date.today() >= booking.end_date:
         raise HTTPException(status_code=409, detail="Buchung ist beendet")
 
-    _validate_persons(payload.persons, booking.start_date, payload.end_date)
+    _validate_persons(db, payload.persons, booking.start_date, payload.end_date)
     warnings = apply_amendment(db, booking, payload)
     db.commit()
     return booking_to_read(_load_booking(db, booking.id), warnings=warnings)
@@ -390,9 +534,11 @@ def update_booking(
     booking = _load_booking(db, booking_id)
     data = payload.model_dump(exclude_unset=True)
 
-    if set(data.keys()) <= {"notes"}:
+    if set(data.keys()) <= {"notes", "group_leader"}:
         if "notes" in data:
             booking.notes = data["notes"] or ""
+        if "group_leader" in data:
+            booking.group_leader = data["group_leader"] or ""
         db.commit()
         return booking_to_read(_load_booking(db, booking.id))
 
@@ -419,6 +565,8 @@ def update_booking(
         booking.group_name = data["group_name"]
     if "notes" in data:
         booking.notes = data["notes"] or ""
+    if "group_leader" in data:
+        booking.group_leader = data["group_leader"] or ""
     booking.start_date = start
     booking.end_date = end
     booking.booking_pitches.clear()
@@ -428,10 +576,11 @@ def update_booking(
         )
 
     if "persons" in data and payload.persons is not None:
-        _validate_persons(payload.persons, start, end)
+        _validate_persons(db, payload.persons, start, end)
+        default_profile_id = require_default_profile(db).id
         booking.persons.clear()
         for p in payload.persons:
-            booking.persons.append(_person_model(p, start, end))
+            booking.persons.append(_person_model(p, start, end, default_profile_id))
     else:
         for person in booking.persons:
             if person.start_date < start or person.end_date > end or person.start_date >= person.end_date:

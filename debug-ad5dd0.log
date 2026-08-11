@@ -1,0 +1,10 @@
+{"sessionId": "ad5dd0", "hypothesisId": "A", "location": "smoke:load", "message": "file loaded", "data": {"size": 179677}, "timestamp": 1786479853693}
+{"sessionId": "ad5dd0", "hypothesisId": "A", "location": "smoke:openpyxl", "message": "workbook loaded", "data": {"seconds": 1.384, "sheets": ["AUSFÜLLANLEITUNG", "GÄSTEBLATT", "ABRECHNUNG", "CHECKLISTE", "Notizen_Vereinbarungen", "DSGVO"]}, "timestamp": 1786479855080}
+{"sessionId": "ad5dd0", "hypothesisId": "C", "location": "smoke:merged", "message": "merged count", "data": {"sheet": "AUSFÜLLANLEITUNG", "merged": 0, "dims": "A2:A30"}, "timestamp": 1786479855081}
+{"sessionId": "ad5dd0", "hypothesisId": "C", "location": "smoke:merged", "message": "merged count", "data": {"sheet": "GÄSTEBLATT", "merged": 217, "dims": "A1:AF208"}, "timestamp": 1786479855085}
+{"sessionId": "ad5dd0", "hypothesisId": "C", "location": "smoke:merged", "message": "merged count", "data": {"sheet": "ABRECHNUNG", "merged": 46, "dims": "A8:L56"}, "timestamp": 1786479855089}
+{"sessionId": "ad5dd0", "hypothesisId": "C", "location": "smoke:merged", "message": "merged count", "data": {"sheet": "CHECKLISTE", "merged": 54, "dims": "A8:K56"}, "timestamp": 1786479855090}
+{"sessionId": "ad5dd0", "hypothesisId": "C", "location": "smoke:merged", "message": "merged count", "data": {"sheet": "Notizen_Vereinbarungen", "merged": 0, "dims": "A2:C30"}, "timestamp": 1786479855090}
+{"sessionId": "ad5dd0", "hypothesisId": "C", "location": "smoke:merged", "message": "merged count", "data": {"sheet": "DSGVO", "merged": 0, "dims": "A2:A28"}, "timestamp": 1786479855091}
+{"sessionId": "ad5dd0", "hypothesisId": "B", "location": "smoke:parse", "message": "parse done", "data": {"seconds": 3.3, "group": "Bruneck", "persons": 2}, "timestamp": 1786479858390}
+{"sessionId": "ad5dd0", "runId": "pre-fix", "hypothesisId": "D", "location": "api:parse", "message": "TestClient parse", "data": {"status": 200, "seconds": 1.298, "body_keys": ["group_name", "start_date", "end_date", "group_leader", "persons", "warnings"]}, "timestamp": 1786479952632}

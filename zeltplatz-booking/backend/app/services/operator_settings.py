@@ -21,7 +21,19 @@ CONTENT_TYPES = {
 def get_or_create_operator_settings(db: Session) -> OperatorSettings:
     row = db.get(OperatorSettings, 1)
     if row is None:
-        row = OperatorSettings(id=1, organization_name="", address="", iban="", logo_filename=None)
+        row = OperatorSettings(
+            id=1,
+            organization_name="",
+            address="",
+            iban="",
+            logo_filename=None,
+            home_country="AT",
+        )
+        db.add(row)
+        db.commit()
+        db.refresh(row)
+    if not (row.home_country or "").strip():
+        row.home_country = "AT"
         db.add(row)
         db.commit()
         db.refresh(row)

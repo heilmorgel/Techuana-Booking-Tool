@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
 from app.models import Booking, BookingPitch, BookingService, PersonFeeElement, Service
+from app.services.invoice_number import ensure_invoice_number
 from app.services.operator_settings import get_or_create_operator_settings, operator_to_invoice
 from app.schemas import InvoiceLine, InvoiceRead
 
@@ -40,12 +41,16 @@ def rate_for_element(element: PersonFeeElement, age: int) -> float | None:
     return None
 
 
-def _period_label(start: date, end: date) -> str:
-    return f"{start.isoformat()} – {end.isoformat()}"
-
-
-def build_invoice(db: Session, booking: Booking) -> InvoiceRead:
+def build_invoice(
+    db: Session,
+    booking: Booking,
+    *,
+    assign_number: bool = False,
+) -> InvoiceRead:
     nights = nights_for(booking)
+    invoice_number: str | None = booking.invoice_number
+    if assign_number:
+        invoice_number = ensure_invoice_number(db, booking)
     lines: list[InvoiceLine] = []
 
     segments = sorted(
@@ -60,7 +65,7 @@ def build_invoice(db: Session, booking: Booking) -> InvoiceRead:
         lines.append(
             InvoiceLine(
                 category="pitch",
-                label=f"Zeltplatz {name} ({_period_label(seg.start_date, seg.end_date)})",
+                label=f"Zeltplatz {name}",
                 quantity=1,
                 unit_price=unit,
                 nights=seg_nights,
@@ -70,20 +75,26 @@ def build_invoice(db: Session, booking: Booking) -> InvoiceRead:
             )
         )
 
-    elements = list(
-        db.scalars(
-            select(PersonFeeElement)
-            .options(selectinload(PersonFeeElement.brackets))
-            .order_by(PersonFeeElement.sort_order, PersonFeeElement.name)
-        ).all()
-    )
+    elements_by_profile: dict[int, list[PersonFeeElement]] = {}
+    profile_ids = {person.price_profile_id for person in booking.persons}
+    if profile_ids:
+        all_elements = list(
+            db.scalars(
+                select(PersonFeeElement)
+                .where(PersonFeeElement.price_profile_id.in_(profile_ids))
+                .options(selectinload(PersonFeeElement.brackets))
+                .order_by(PersonFeeElement.sort_order, PersonFeeElement.name)
+            ).all()
+        )
+        for element in all_elements:
+            elements_by_profile.setdefault(element.price_profile_id, []).append(element)
 
     for person in booking.persons:
         person_start = person.start_date
         person_nights = nights_between(person.start_date, person.end_date)
         age = age_on_date(person.birth_date, person_start)
         daily_total = 0.0
-        for element in elements:
+        for element in elements_by_profile.get(person.price_profile_id, []):
             rate = rate_for_element(element, age)
             if rate is None:
                 continue
@@ -94,10 +105,7 @@ def build_invoice(db: Session, booking: Booking) -> InvoiceRead:
         lines.append(
             InvoiceLine(
                 category="person",
-                label=(
-                    f"{person.name} ({age} J., "
-                    f"{_period_label(person.start_date, person.end_date)})"
-                ),
+                label=f"{person.name} ({age} J.)",
                 quantity=1,
                 unit_price=_money(daily_total),
                 nights=person_nights,
@@ -118,10 +126,7 @@ def build_invoice(db: Session, booking: Booking) -> InvoiceRead:
         lines.append(
             InvoiceLine(
                 category="service",
-                label=(
-                    f"{service.name} × {qty} "
-                    f"({_period_label(bs.start_date, bs.end_date)})"
-                ),
+                label=f"{service.name} × {qty}",
                 quantity=qty,
                 unit_price=unit,
                 nights=seg_nights,
@@ -131,11 +136,29 @@ def build_invoice(db: Session, booking: Booking) -> InvoiceRead:
             )
         )
 
-    visible = [line for line in lines if line.amount > 0]
+    for custom in booking.custom_invoice_lines:
+        amount = _money(custom.amount)
+        lines.append(
+            InvoiceLine(
+                id=custom.id,
+                category="custom",
+                label=custom.label,
+                quantity=1,
+                unit_price=amount,
+                nights=0,
+                amount=amount,
+            )
+        )
+
+    # Auto lines only if amount > 0; custom lines always (incl. 0 notes / negative discounts)
+    visible = [
+        line for line in lines if line.category == "custom" or line.amount > 0
+    ]
     total = _money(sum(line.amount for line in visible))
     operator = operator_to_invoice(get_or_create_operator_settings(db))
     return InvoiceRead(
         booking_id=booking.id,
+        invoice_number=invoice_number,
         group_name=booking.group_name,
         start_date=booking.start_date,
         end_date=booking.end_date,
@@ -156,5 +179,6 @@ def load_booking_for_invoice(db: Session, booking_id: int) -> Booking | None:
             selectinload(Booking.booking_services)
             .selectinload(BookingService.service)
             .selectinload(Service.group),
+            selectinload(Booking.custom_invoice_lines),
         )
     )

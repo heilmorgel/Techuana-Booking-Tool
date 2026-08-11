@@ -30,7 +30,11 @@
             <h4>Personen</h4>
             <p v-if="!activePersons.length" class="muted tiny">Keine</p>
             <div v-for="(person, idx) in activePersons" :key="idx" class="amend-row">
-              <span>{{ person.name }} ({{ person.birth_date }}, {{ person.nationality }})</span>
+              <span>
+                {{ person.name }} ({{ person.birth_date }}, {{ person.nationality }},
+                {{ profileName(person.price_profile_id) }}
+                <template v-if="person.travel_document">, {{ person.travel_document }}</template>)
+              </span>
               <button type="button" class="btn secondary btn-sm" @click="removePerson(idx)">Entfernen</button>
             </div>
           </div>
@@ -92,6 +96,16 @@
               <select v-model="newPerson.nationality">
                 <option v-for="c in countries" :key="c.code" :value="c.code">{{ c.code }}</option>
               </select>
+              <select v-model.number="newPerson.price_profile_id" title="Preisprofil">
+                <option v-for="p in priceProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
+              </select>
+              <input
+                v-if="showTravelDocument(newPerson)"
+                v-model.trim="newPerson.travel_document"
+                placeholder="Reisedokument"
+                title="Reisedokument"
+                class="person-travel-doc"
+              />
               <button type="button" class="btn btn-sm" @click="addPerson">Hinzufügen</button>
             </div>
           </div>
@@ -156,6 +170,8 @@ const confirmError = ref('')
 const confirmOpen = ref(false)
 const booking = ref(null)
 const countries = ref([])
+const homeCountry = ref('AT')
+const priceProfiles = ref([])
 const availablePitches = ref([])
 const availability = ref([])
 const endDate = ref('')
@@ -173,11 +189,26 @@ const newPerson = reactive({
   name: '',
   birth_date: '',
   nationality: 'AT',
+  travel_document: '',
+  price_profile_id: null,
 })
+
+function showTravelDocument(person) {
+  return (person?.nationality || '').toUpperCase() !== (homeCountry.value || 'AT').toUpperCase()
+}
 
 function todayIso() {
   const d = new Date()
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function defaultPriceProfileId() {
+  const def = priceProfiles.value.find((p) => p.is_default)
+  return def?.id ?? priceProfiles.value[0]?.id ?? null
+}
+
+function profileName(id) {
+  return priceProfiles.value.find((p) => p.id === id)?.name || `#${id}`
 }
 
 const activePitches = computed(() =>
@@ -268,12 +299,23 @@ async function load() {
   error.value = ''
   confirmOpen.value = false
   try {
-    const [b, pitches, countryList] = await Promise.all([
+    const [b, pitches, meta, profiles] = await Promise.all([
       api.getBooking(props.bookingId),
       api.listPitches(),
-      countries.value.length ? Promise.resolve(countries.value) : api.countries(),
+      countries.value.length
+        ? Promise.resolve({ countries: countries.value, home_country: homeCountry.value })
+        : api.getMeta(),
+      priceProfiles.value.length ? Promise.resolve(priceProfiles.value) : api.listPriceProfiles(),
     ])
-    countries.value = countryList
+    countries.value = meta.countries || countries.value
+    homeCountry.value = meta.home_country || homeCountry.value || 'AT'
+    priceProfiles.value = profiles
+    if (newPerson.price_profile_id == null) {
+      newPerson.price_profile_id = defaultPriceProfileId()
+    }
+    if (!newPerson.nationality) {
+      newPerson.nationality = homeCountry.value
+    }
     booking.value = b
     endDate.value = b.end_date
     const names = {}
@@ -293,6 +335,8 @@ async function load() {
         name: p.name,
         birth_date: p.birth_date,
         nationality: p.nationality,
+        travel_document: p.travel_document || '',
+        price_profile_id: p.price_profile_id ?? defaultPriceProfileId(),
         start_date: p.start_date,
         end_date: p.end_date,
       }))
@@ -359,7 +403,12 @@ function removePerson(idx) {
 }
 
 function addPerson() {
-  if (!newPerson.name?.trim() || !newPerson.birth_date || !newPerson.nationality) {
+  if (
+    !newPerson.name?.trim() ||
+    !newPerson.birth_date ||
+    !newPerson.nationality ||
+    !newPerson.price_profile_id
+  ) {
     error.value = 'Bitte Personenangaben vollständig ausfüllen.'
     return
   }
@@ -368,12 +417,16 @@ function addPerson() {
     name: newPerson.name.trim(),
     birth_date: newPerson.birth_date,
     nationality: newPerson.nationality,
+    travel_document: showTravelDocument(newPerson) ? newPerson.travel_document || '' : '',
+    price_profile_id: newPerson.price_profile_id,
     start_date: todayIso(),
     end_date: endDate.value,
   })
   newPerson.name = ''
   newPerson.birth_date = ''
-  newPerson.nationality = 'AT'
+  newPerson.nationality = homeCountry.value || 'AT'
+  newPerson.travel_document = ''
+  newPerson.price_profile_id = defaultPriceProfileId()
 }
 
 function removeService(serviceId) {
@@ -422,6 +475,7 @@ async function submitAmend() {
       name: p.name,
       birth_date: p.birth_date,
       nationality: p.nationality,
+      price_profile_id: p.price_profile_id,
       start_date: p.start_date < effectiveDate.value ? effectiveDate.value : p.start_date,
       end_date: p.end_date > endDate.value ? endDate.value : p.end_date,
     }))
@@ -453,5 +507,9 @@ watch(
 )
 
 onMounted(async () => {
-  countries.value = await api.countries()
-})</script>
+  const [countryList, profiles] = await Promise.all([api.countries(), api.listPriceProfiles()])
+  countries.value = countryList
+  priceProfiles.value = profiles
+  newPerson.price_profile_id = defaultPriceProfileId()
+})
+</script>

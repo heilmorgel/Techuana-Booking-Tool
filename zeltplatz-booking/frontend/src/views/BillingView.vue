@@ -23,6 +23,7 @@
     <table class="table">
       <thead>
         <tr>
+          <th>Rechnungsnr.</th>
           <th>Gruppe</th>
           <th>Zeitraum</th>
           <th>Nächte</th>
@@ -32,6 +33,7 @@
       </thead>
       <tbody>
         <tr v-for="item in items" :key="item.booking_id">
+          <td>{{ item.invoice_number || '—' }}</td>
           <td>{{ item.group_name }}</td>
           <td>{{ item.start_date }} – {{ item.end_date }}</td>
           <td>{{ item.nights }}</td>
@@ -46,11 +48,11 @@
     <p v-if="!items.length" class="muted">Keine Buchungen im Zeitraum.</p>
   </section>
 
-  <div v-if="invoice" class="modal-backdrop" @click.self="invoice = null">
+  <div v-if="invoice" class="modal-backdrop" @click.self="closeDetail">
     <div class="modal modal-compact" role="dialog">
       <div class="panel-header compact-header">
         <h2>Rechnung — {{ invoice.group_name }}</h2>
-        <button type="button" class="btn secondary btn-sm" @click="invoice = null">Schließen</button>
+        <button type="button" class="btn secondary btn-sm" @click="closeDetail">Schließen</button>
       </div>
 
       <div v-if="hasOperatorHeader" class="invoice-letterhead">
@@ -67,6 +69,7 @@
       </div>
 
       <p class="muted tiny">
+        <span v-if="invoice.invoice_number">Rechnungsnr. {{ invoice.invoice_number }} · </span>
         {{ invoice.start_date }} – {{ invoice.end_date }} · {{ invoice.nights }} Nächte
       </p>
       <table class="table invoice-table">
@@ -78,36 +81,88 @@
             <th>Zeitraum</th>
             <th>Nächte</th>
             <th>Betrag</th>
+            <th></th>
           </tr>
         </thead>
         <tbody>
           <template v-for="group in invoiceGroups" :key="group.key">
             <tr class="invoice-group-header">
-              <td colspan="6">{{ group.title }}</td>
+              <td colspan="7">{{ group.title }}</td>
             </tr>
-            <tr v-for="(line, idx) in group.lines" :key="`${group.key}-${idx}`">
+            <tr v-for="(line, idx) in group.lines" :key="`${group.key}-${line.id ?? idx}`">
               <td>{{ line.label }}</td>
-              <td>{{ line.quantity }}</td>
-              <td>{{ formatPrice(line.unit_price) }}</td>
+              <td>{{ line.category === 'custom' ? '—' : line.quantity }}</td>
+              <td>{{ line.category === 'custom' ? '—' : formatPrice(line.unit_price) }}</td>
               <td>
                 <span v-if="line.start_date && line.end_date">
-                  {{ line.start_date }} – {{ line.end_date }}
+                  {{ formatPeriod(line.start_date, line.end_date) }}
                 </span>
               </td>
-              <td>{{ line.nights }}</td>
+              <td>{{ line.category === 'custom' ? '—' : line.nights }}</td>
               <td>{{ formatPrice(line.amount) }}</td>
+              <td>
+                <button
+                  v-if="line.category === 'custom' && line.id != null"
+                  type="button"
+                  class="btn secondary btn-sm"
+                  :disabled="savingCustom"
+                  @click="removeCustomLine(line.id)"
+                >
+                  Entfernen
+                </button>
+              </td>
             </tr>
             <tr class="invoice-subtotal">
               <td colspan="5">Zwischensumme {{ group.title }}</td>
               <td>{{ formatPrice(group.subtotal) }}</td>
+              <td></td>
             </tr>
           </template>
         </tbody>
       </table>
       <p v-if="!invoice.lines.length" class="muted">Keine verrechenbaren Positionen (alle 0 €).</p>
+
+      <div class="custom-line-form">
+        <h3 class="tiny" style="margin: 0.75rem 0 0.4rem">Sonstige Position</h3>
+        <p class="muted tiny" style="margin-top: 0">
+          Zusatzkosten (positiv), Rabatte (negativ) oder Notiz (0 € — nur dann erscheint eine 0-Position).
+        </p>
+        <div class="grid-2" style="align-items: end; gap: 0.5rem">
+          <label>
+            Bezeichnung
+            <input v-model="customLabel" type="text" maxlength="500" placeholder="z. B. Sonderrabatt" />
+          </label>
+          <label>
+            Betrag (€)
+            <input v-model.number="customAmount" type="number" step="0.01" />
+          </label>
+        </div>
+        <div style="margin-top: 0.5rem">
+          <button
+            type="button"
+            class="btn secondary"
+            :disabled="savingCustom || !customLabel.trim()"
+            @click="addCustomLine"
+          >
+            Position hinzufügen
+          </button>
+          <span v-if="customError" class="error" style="margin-left: 0.75rem">{{ customError }}</span>
+        </div>
+      </div>
+
       <div class="panel-header">
         <strong>Summe: {{ formatPrice(invoice.total) }}</strong>
         <a class="btn" :href="pdfUrl(invoice.booking_id)" target="_blank" rel="noopener">PDF exportieren</a>
+      </div>
+      <div class="invoice-signatures">
+        <div class="invoice-signature">
+          <div class="invoice-signature-line" aria-hidden="true"></div>
+          <span>Bestätigung Gruppenleiter</span>
+        </div>
+        <div class="invoice-signature">
+          <div class="invoice-signature-line" aria-hidden="true"></div>
+          <span>Unterschrift Quartermaster</span>
+        </div>
       </div>
       <footer v-if="hasOperatorFooter" class="invoice-footer">
         <span v-if="invoice.operator.organization_name">{{ invoice.operator.organization_name }}</span>
@@ -126,11 +181,16 @@ const GROUP_ORDER = [
   { key: 'pitch', title: 'Zeltplätze' },
   { key: 'person', title: 'Personen' },
   { key: 'service', title: 'Zusatzdienste' },
+  { key: 'custom', title: 'Sonstige Positionen' },
 ]
 
 const items = ref([])
 const invoice = ref(null)
 const error = ref('')
+const customLabel = ref('')
+const customAmount = ref(0)
+const customError = ref('')
+const savingCustom = ref(false)
 const year = new Date().getFullYear()
 const fromDate = ref(`${year}-01-01`)
 const toDate = ref(`${year}-12-31`)
@@ -171,8 +231,24 @@ function formatPrice(value) {
   return new Intl.NumberFormat('de-AT', { style: 'currency', currency: 'EUR' }).format(Number(value || 0))
 }
 
+/** Day+month only — year is shown in the invoice header. */
+function formatPeriod(start, end) {
+  const fmt = (iso) => {
+    const [, m, d] = String(iso).split('-')
+    return `${d}.${m}.`
+  }
+  return `${fmt(start)} – ${fmt(end)}`
+}
+
 function pdfUrl(id) {
   return `/api/v1/bookings/${id}/invoice.pdf`
+}
+
+function closeDetail() {
+  invoice.value = null
+  customLabel.value = ''
+  customAmount.value = 0
+  customError.value = ''
 }
 
 async function loadList() {
@@ -187,10 +263,54 @@ async function loadList() {
 
 async function openDetail(id) {
   error.value = ''
+  customError.value = ''
+  customLabel.value = ''
+  customAmount.value = 0
   try {
     invoice.value = await api.getInvoice(id)
   } catch (e) {
     error.value = e.message
+  }
+}
+
+async function refreshInvoice() {
+  if (!invoice.value) return
+  invoice.value = await api.getInvoice(invoice.value.booking_id)
+  await loadList()
+}
+
+async function addCustomLine() {
+  if (!invoice.value) return
+  const label = customLabel.value.trim()
+  if (!label) return
+  savingCustom.value = true
+  customError.value = ''
+  try {
+    await api.createCustomInvoiceLine(invoice.value.booking_id, {
+      label,
+      amount: Number(customAmount.value) || 0,
+    })
+    customLabel.value = ''
+    customAmount.value = 0
+    await refreshInvoice()
+  } catch (e) {
+    customError.value = e.message
+  } finally {
+    savingCustom.value = false
+  }
+}
+
+async function removeCustomLine(lineId) {
+  if (!invoice.value) return
+  savingCustom.value = true
+  customError.value = ''
+  try {
+    await api.deleteCustomInvoiceLine(invoice.value.booking_id, lineId)
+    await refreshInvoice()
+  } catch (e) {
+    customError.value = e.message
+  } finally {
+    savingCustom.value = false
   }
 }
 
