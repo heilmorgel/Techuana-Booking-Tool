@@ -192,13 +192,26 @@ def _find_gaesteblatt_sheet(workbook):
     raise ValueError("Arbeitsblatt 'Gästeblatt' nicht gefunden")
 
 
-def _read_merged(ws, row: int, col: int) -> Any:
+def _read_merged(ws, row: int, col: int, merge_map: dict[tuple[int, int], tuple[int, int]] | None = None) -> Any:
     """Return value for a cell, resolving merged ranges to the top-left cell."""
+    if merge_map is not None:
+        top = merge_map.get((row, col), (row, col))
+        return ws.cell(top[0], top[1]).value
     cell = ws.cell(row, col)
     for merged in ws.merged_cells.ranges:
         if cell.coordinate in merged:
             return ws.cell(merged.min_row, merged.min_col).value
     return cell.value
+
+
+def _build_merge_map(ws) -> dict[tuple[int, int], tuple[int, int]]:
+    mapping: dict[tuple[int, int], tuple[int, int]] = {}
+    for merged in ws.merged_cells.ranges:
+        top = (merged.min_row, merged.min_col)
+        for r in range(merged.min_row, merged.max_row + 1):
+            for c in range(merged.min_col, merged.max_col + 1):
+                mapping[(r, c)] = top
+    return mapping
 
 
 def parse_gaesteblatt_bytes(content: bytes) -> GaesteblattImportDraft:
@@ -251,22 +264,27 @@ def parse_gaesteblatt_bytes(content: bytes) -> GaesteblattImportDraft:
     warnings: list[str] = []
     try:
         t1 = _time.perf_counter()
+        merge_map = _build_merge_map(ws)
         merged_n = len(ws.merged_cells.ranges)
-        group_name = _cell_str(_read_merged(ws, 8, 2))
-        start_date = _parse_date(_read_merged(ws, 12, 2))
-        end_date = _parse_date(_read_merged(ws, 13, 2))
+
+        def cell(row: int, col: int) -> Any:
+            return _read_merged(ws, row, col, merge_map)
+
+        group_name = _cell_str(cell(8, 2))
+        start_date = _parse_date(cell(12, 2))
+        end_date = _parse_date(cell(13, 2))
         if start_date and end_date and start_date >= end_date:
             warnings.append("Anreise muss vor Abreise liegen — Daten bitte prüfen.")
 
-        leader_last = _cell_str(_read_merged(ws, 4, 7))
-        leader_first = _cell_str(_read_merged(ws, 5, 7))
-        leader_birth = _parse_date(_read_merged(ws, 6, 7))
-        leader_doc = _cell_str(_read_merged(ws, 7, 7))
-        leader_nat_raw = _read_merged(ws, 8, 7)
+        leader_last = _cell_str(cell(4, 7))
+        leader_first = _cell_str(cell(5, 7))
+        leader_birth = _parse_date(cell(6, 7))
+        leader_doc = _cell_str(cell(7, 7))
+        leader_nat_raw = cell(8, 7)
         leader_nat = map_nationality(leader_nat_raw) if _cell_str(leader_nat_raw) else ""
-        leader_street = _cell_str(_read_merged(ws, 9, 7))
-        leader_city = _cell_str(_read_merged(ws, 10, 7))
-        leader_country = _cell_str(_read_merged(ws, 11, 7))
+        leader_street = _cell_str(cell(9, 7))
+        leader_city = _cell_str(cell(10, 7))
+        leader_country = _cell_str(cell(11, 7))
 
         group_leader = _format_leader_block(
             leader_last,
@@ -280,21 +298,19 @@ def parse_gaesteblatt_bytes(content: bytes) -> GaesteblattImportDraft:
         )
 
         persons: list[GaesteblattPersonDraft] = []
-        empty_streak = 0
         rows_scanned = 0
         for row in range(_PERSON_START_ROW, _PERSON_END_ROW + 1):
             rows_scanned += 1
-            last = _cell_str(_read_merged(ws, row, 2))
+            last = _cell_str(cell(row, 2))
             if not last:
-                empty_streak += 1
-                continue
-            empty_streak = 0
-            first = _cell_str(_read_merged(ws, row, 3))
-            birth = _parse_date(_read_merged(ws, row, 4))
-            nationality = map_nationality(_read_merged(ws, row, 5))
-            travel_document = _cell_str(_read_merged(ws, row, 6))
-            person_start = _parse_date(_read_merged(ws, row, 8)) or start_date
-            person_end = _parse_date(_read_merged(ws, row, 9)) or end_date
+                # Gästeblatt: Personenblock endet bei erster leerer Nachnamens-Zelle
+                break
+            first = _cell_str(cell(row, 3))
+            birth = _parse_date(cell(row, 4))
+            nationality = map_nationality(cell(row, 5))
+            travel_document = _cell_str(cell(row, 6))
+            person_start = _parse_date(cell(row, 8)) or start_date
+            person_end = _parse_date(cell(row, 9)) or end_date
             persons.append(
                 GaesteblattPersonDraft(
                     name=_join_name(last, first),

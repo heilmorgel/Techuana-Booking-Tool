@@ -118,23 +118,35 @@ export const api = {
     const form = new FormData()
     form.append('file', file)
     const url = `${API_BASE}/bookings/parse-gaesteblatt`
-    const res = await fetch(url, {
-      method: 'POST',
-      body: form,
-    })
-    const text = await res.text()
-    let data = null
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 60000)
     try {
-      data = text ? JSON.parse(text) : null
-    } catch {
-      data = text
+      const res = await fetch(url, {
+        method: 'POST',
+        body: form,
+        signal: controller.signal,
+      })
+      const text = await res.text()
+      let data = null
+      try {
+        data = text ? JSON.parse(text) : null
+      } catch {
+        data = text
+      }
+      if (!res.ok) {
+        const detail = data?.detail
+        const message = typeof detail === 'string' ? detail : JSON.stringify(detail || data || res.statusText)
+        throw new Error(message)
+      }
+      return data
+    } catch (e) {
+      if (e?.name === 'AbortError') {
+        throw new Error('Import-Timeout: Backend antwortet nicht (Port 8000 prüfen / neu starten).')
+      }
+      throw e
+    } finally {
+      clearTimeout(timeoutId)
     }
-    if (!res.ok) {
-      const detail = data?.detail
-      const message = typeof detail === 'string' ? detail : JSON.stringify(detail || data || res.statusText)
-      throw new Error(message)
-    }
-    return data
   },
   getOperatorSettings: () => request('/operator-settings'),
   updateOperatorSettings: (body) =>

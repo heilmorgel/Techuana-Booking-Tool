@@ -604,8 +604,14 @@ async function onImportFile(event) {
   error.value = ''
   importHint.value = ''
   importWarnings.value = []
+  // #region agent log
+  fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ad5dd0'},body:JSON.stringify({sessionId:'ad5dd0',runId:'repro',hypothesisId:'D',location:'BookingForm.vue:onImportFile:start',message:'import started',data:{fileName:file.name,fileSize:file.size,isExisting:isExisting.value},timestamp:Date.now()})}).catch(()=>{})
+  // #endregion
   try {
     const draft = await api.parseGaesteblatt(file)
+    // #region agent log
+    fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ad5dd0'},body:JSON.stringify({sessionId:'ad5dd0',runId:'repro',hypothesisId:'D',location:'BookingForm.vue:onImportFile:parsed',message:'parse response received',data:{group:draft?.group_name,persons:(draft?.persons||[]).length,start:draft?.start_date,end:draft?.end_date},timestamp:Date.now()})}).catch(()=>{})
+    // #endregion
     const parseWarnings = draft.warnings || []
     if (isExisting.value) {
       const { added, skipped } = mergeImportedPersons(draft)
@@ -630,13 +636,22 @@ async function onImportFile(event) {
         error.value = parseWarnings.join(' ')
       }
       if (form.start_date && form.end_date) {
+        // #region agent log
+        fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ad5dd0'},body:JSON.stringify({sessionId:'ad5dd0',runId:'repro',hypothesisId:'E',location:'BookingForm.vue:onImportFile:reload',message:'reloading pitches/services',data:{start:form.start_date,end:form.end_date},timestamp:Date.now()})}).catch(()=>{})
+        // #endregion
         await Promise.all([
           reloadPitches({ clearSelection: true }),
           reloadServices(),
         ])
       }
     }
+    // #region agent log
+    fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ad5dd0'},body:JSON.stringify({sessionId:'ad5dd0',runId:'repro',hypothesisId:'E',location:'BookingForm.vue:onImportFile:done',message:'import finished ok',data:{},timestamp:Date.now()})}).catch(()=>{})
+    // #endregion
   } catch (e) {
+    // #region agent log
+    fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ad5dd0'},body:JSON.stringify({sessionId:'ad5dd0',runId:'repro',hypothesisId:'D',location:'BookingForm.vue:onImportFile:catch',message:'import failed',data:{error:String(e?.message||e)},timestamp:Date.now()})}).catch(()=>{})
+    // #endregion
     error.value = e.message
   } finally {
     importing.value = false
