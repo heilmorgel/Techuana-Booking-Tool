@@ -31,7 +31,7 @@
               v-for="day in days"
               :key="day.key"
               class="gantt-day"
-              :class="{ weekend: day.weekend }"
+              :class="{ weekend: day.weekend, today: day.today }"
               :style="{ width: `${dayWidth}px` }"
               :title="day.label"
             >
@@ -47,7 +47,7 @@
               v-for="day in days"
               :key="`${row.pitchId}-${day.key}`"
               class="gantt-cell"
-              :class="{ weekend: day.weekend }"
+              :class="{ weekend: day.weekend, today: day.today }"
               :style="{ width: `${dayWidth}px` }"
             />
             <div
@@ -111,6 +111,8 @@ const toDate = ref(formatDate(addDays(today, 20)))
 const rangeStart = computed(() => parseDate(fromDate.value))
 const rangeEnd = computed(() => parseDate(toDate.value))
 
+const todayKey = formatDate(new Date())
+
 const days = computed(() => {
   const result = []
   const cursor = new Date(rangeStart.value)
@@ -122,6 +124,7 @@ const days = computed(() => {
     result.push({
       key,
       weekend,
+      today: key === todayKey,
       label: key,
       short: String(cursor.getDate()),
     })

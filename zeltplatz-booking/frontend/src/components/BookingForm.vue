@@ -188,25 +188,59 @@
               <p v-if="!form.persons.length" class="muted tiny">
                 {{ locked ? 'Keine Personen erfasst' : 'Optional — ohne Personen möglich' }}
               </p>
+              <div v-if="form.persons.length" class="person-row person-row-header" aria-hidden="true">
+                <span>Name</span>
+                <span>Geburtsdatum</span>
+                <span>Staatsangehörigkeit</span>
+                <span>Preisprofil</span>
+                <span>Anreise</span>
+                <span>Abreise</span>
+                <span class="person-row-actions-spacer"></span>
+              </div>
               <div v-for="(person, index) in form.persons" :key="index" class="person-row person-row-compact">
-                <input v-model.trim="person.name" placeholder="Name" :readonly="locked" />
-                <input v-model="person.birth_date" type="date" title="Geburtsdatum" :readonly="locked" />
-                <select v-model="person.nationality" :disabled="locked" title="Staatsangehörigkeit">
+                <input v-model.trim="person.name" placeholder="Name" aria-label="Name" :readonly="locked" />
+                <input
+                  v-model="person.birth_date"
+                  type="date"
+                  aria-label="Geburtsdatum"
+                  title="Geburtsdatum"
+                  :readonly="locked"
+                />
+                <select
+                  v-model="person.nationality"
+                  :disabled="locked"
+                  aria-label="Staatsangehörigkeit"
+                  title="Staatsangehörigkeit"
+                >
                   <option v-for="c in countries" :key="c.code" :value="c.code">{{ c.code }}</option>
                 </select>
                 <select
                   v-model.number="person.price_profile_id"
                   :disabled="locked"
+                  aria-label="Preisprofil"
                   title="Preisprofil"
                 >
                   <option v-for="p in priceProfiles" :key="p.id" :value="p.id">{{ p.name }}</option>
                 </select>
-                <input v-model="person.start_date" type="date" title="Anreise" :readonly="locked" />
-                <input v-model="person.end_date" type="date" title="Abreise" :readonly="locked" />
+                <input
+                  v-model="person.start_date"
+                  type="date"
+                  aria-label="Anreise"
+                  title="Anreise"
+                  :readonly="locked"
+                />
+                <input
+                  v-model="person.end_date"
+                  type="date"
+                  aria-label="Abreise"
+                  title="Abreise"
+                  :readonly="locked"
+                />
                 <input
                   v-if="showTravelDocument(person)"
                   v-model.trim="person.travel_document"
-                  placeholder="Reisedokument"
+                  placeholder="Reisedokument (Art, Nummer, Ausstellungsbehörde)"
+                  aria-label="Reisedokument"
                   title="Reisedokument (Art, Nummer, Ausstellungsbehörde)"
                   :readonly="locked"
                   class="person-travel-doc"
@@ -220,6 +254,7 @@
                 >
                   ×
                 </button>
+                <span v-else class="person-row-actions-spacer"></span>
               </div>
             </div>
 
