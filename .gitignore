@@ -1,0 +1,14 @@
+.data/
+.data-test/
+**/__pycache__/
+**/.pytest_cache/
+**/.testdata/
+**/*.db
+**/node_modules/
+**/dist/
+.env
+.venv/
+venv/
+**/.venv/
+*.pyc
+.DS_Store

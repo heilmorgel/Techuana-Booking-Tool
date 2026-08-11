@@ -1,0 +1,10 @@
+{
+  "name": "techuana-homeassistant",
+  "private": true,
+  "scripts": {
+    "dev:api": "zeltplatz-booking/backend/.venv/Scripts/python.exe zeltplatz-booking/backend/run_dev.py",
+    "dev:ui": "npm --prefix zeltplatz-booking/frontend run dev",
+    "build:ui": "npm --prefix zeltplatz-booking/frontend run build",
+    "test": "zeltplatz-booking/backend/.venv/Scripts/python.exe -c \"import os,sys; from pathlib import Path; root=Path('zeltplatz-booking/backend'); os.environ['DATA_DIR']=str(root/'.testdata'); os.environ['DEV_MODE']='1'; os.environ['PYTHONPATH']=str(root); os.chdir(root); import pytest; sys.exit(pytest.main(['-q']))\""
+  }
+}

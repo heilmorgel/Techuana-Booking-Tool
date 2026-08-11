@@ -1,0 +1,25 @@
+name: "Zeltplatz Buchung"
+version: "0.1.0"
+slug: zeltplatz_booking
+description: "Buchungsverwaltung für Pfadfinder-Zeltlagerplätze"
+url: "https://github.com/techuana/zeltplatz-booking"
+arch:
+  - aarch64
+  - amd64
+  - armv7
+init: false
+ingress: true
+ingress_port: 8000
+panel_icon: mdi:tent
+panel_title: Zeltplätze
+options:
+  timezone: Europe/Vienna
+  api_token: ""
+schema:
+  timezone: str
+  api_token: str
+map: []
+ports: {}
+ports_description: {}
+startup: application
+boot: auto
