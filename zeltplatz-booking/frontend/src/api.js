@@ -58,6 +58,8 @@ export const api = {
   updateBooking: (id, body) => request(`/bookings/${id}`, { method: 'PATCH', body: JSON.stringify(body) }),
   amendBooking: (id, body) => request(`/bookings/${id}/amend`, { method: 'POST', body: JSON.stringify(body) }),
   deleteBooking: (id) => request(`/bookings/${id}`, { method: 'DELETE' }),
+  toggleBookingDeposit: (id) =>
+    request(`/bookings/${id}/deposit/toggle`, { method: 'POST' }),
   listServiceGroups: () => request('/service-groups'),
   createServiceGroup: (body) => request('/service-groups', { method: 'POST', body: JSON.stringify(body) }),
   updateServiceGroup: (id, body) =>

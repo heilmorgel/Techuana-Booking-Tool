@@ -6,7 +6,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
-from app.models import Booking, BookingPitch, BookingService, PersonFeeElement, Service
+from app.models import Booking, BookingPitch, BookingService, PersonFeeElement, PriceProfile, Service
 from app.services.invoice_number import ensure_invoice_number
 from app.services.operator_settings import get_or_create_operator_settings, operator_to_invoice
 from app.schemas import InvoiceLine, InvoiceRead
@@ -31,14 +31,53 @@ def nights_between(start: date, end: date) -> int:
     return max((end - start).days, 0)
 
 
-def rate_for_element(element: PersonFeeElement, age: int) -> float | None:
+def rate_for_element(
+    element: PersonFeeElement,
+    *,
+    age: int,
+    birth_year: int,
+) -> float | None:
     if element.kind == "fixed":
         return float(element.daily_price or 0)
+    # age_based: age_from/age_to_exclusive = Alter; year_based: = Geburtsjahr
+    value = birth_year if element.kind == "year_based" else age
     for bracket in element.brackets:
         upper = bracket.age_to_exclusive
-        if age >= bracket.age_from and (upper is None or age < upper):
+        if value >= bracket.age_from and (upper is None or value < upper):
             return float(bracket.daily_price or 0)
     return None
+
+
+def calculate_deposit_due(db: Session, booking: Booking) -> float:
+    """Sum deposits: unique pitches, max qty per service × deposit, unique price profiles once."""
+    total = 0.0
+
+    seen_pitch_ids: set[int] = set()
+    for seg in booking.booking_pitches:
+        if seg.pitch_id in seen_pitch_ids:
+            continue
+        seen_pitch_ids.add(seg.pitch_id)
+        if seg.pitch is not None:
+            total += float(seg.pitch.deposit or 0)
+
+    max_qty: dict[int, int] = {}
+    deposit_by_service: dict[int, float] = {}
+    for bs in booking.booking_services:
+        max_qty[bs.service_id] = max(max_qty.get(bs.service_id, 0), int(bs.quantity or 0))
+        if bs.service is not None:
+            deposit_by_service[bs.service_id] = float(bs.service.deposit or 0)
+    for service_id, qty in max_qty.items():
+        total += deposit_by_service.get(service_id, 0.0) * qty
+
+    profile_ids = {person.price_profile_id for person in booking.persons if person.price_profile_id}
+    if profile_ids:
+        profiles = list(
+            db.scalars(select(PriceProfile).where(PriceProfile.id.in_(profile_ids))).all()
+        )
+        for profile in profiles:
+            total += float(profile.deposit or 0)
+
+    return _money(total)
 
 
 def build_invoice(
@@ -52,6 +91,7 @@ def build_invoice(
     if assign_number:
         invoice_number = ensure_invoice_number(db, booking)
     lines: list[InvoiceLine] = []
+    deposit_due = calculate_deposit_due(db, booking)
 
     segments = sorted(
         booking.booking_pitches,
@@ -93,9 +133,10 @@ def build_invoice(
         person_start = person.start_date
         person_nights = nights_between(person.start_date, person.end_date)
         age = age_on_date(person.birth_date, person_start)
+        birth_year = person.birth_date.year
         daily_total = 0.0
         for element in elements_by_profile.get(person.price_profile_id, []):
-            rate = rate_for_element(element, age)
+            rate = rate_for_element(element, age=age, birth_year=birth_year)
             if rate is None:
                 continue
             daily_total += rate
@@ -150,9 +191,29 @@ def build_invoice(
             )
         )
 
-    # Auto lines only if amount > 0; custom lines always (incl. 0 notes / negative discounts)
+    if booking.deposit_paid_at is not None and deposit_due > 0:
+        paid = booking.deposit_paid_at
+        if paid.tzinfo is not None:
+            paid_local = paid.astimezone().date()
+        else:
+            paid_local = paid.date()
+        paid_label = paid_local.strftime("%d.%m.%Y")
+        lines.append(
+            InvoiceLine(
+                category="deposit",
+                label=f"Kaution (bezahlt am {paid_label})",
+                quantity=1,
+                unit_price=_money(-deposit_due),
+                nights=0,
+                amount=_money(-deposit_due),
+            )
+        )
+
+    # Auto lines only if amount > 0; custom/deposit always (incl. 0 notes / negative discounts)
     visible = [
-        line for line in lines if line.category == "custom" or line.amount > 0
+        line
+        for line in lines
+        if line.category in ("custom", "deposit") or line.amount > 0
     ]
     total = _money(sum(line.amount for line in visible))
     operator = operator_to_invoice(get_or_create_operator_settings(db))
@@ -165,6 +226,8 @@ def build_invoice(
         nights=nights,
         lines=visible,
         total=total,
+        deposit_due=deposit_due,
+        deposit_paid_at=booking.deposit_paid_at,
         operator=operator,
     )
 

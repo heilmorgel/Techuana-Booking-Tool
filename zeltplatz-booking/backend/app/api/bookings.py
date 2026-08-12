@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime, timezone
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from fastapi.responses import Response
@@ -28,6 +28,7 @@ from app.schemas import (
     BookingRead,
     BookingServiceRead,
     BookingUpdate,
+    DepositToggleRead,
     GaesteblattImportDraft,
     InvoiceCustomLineCreate,
     InvoiceCustomLineRead,
@@ -37,7 +38,7 @@ from app.schemas import (
 )
 from app.services.amendments import apply_amendment
 from app.services.availability import assert_pitches_bookable, pitch_ids_active_from
-from app.services.billing import build_invoice, load_booking_for_invoice
+from app.services.billing import build_invoice, calculate_deposit_due, load_booking_for_invoice
 from app.services.gaesteblatt import parse_gaesteblatt_bytes
 from app.services.invoice_pdf import render_invoice_pdf
 from app.services.operator_settings import get_or_create_operator_settings, logo_path
@@ -139,7 +140,12 @@ def _resolve_booking_services(
     return result
 
 
-def booking_to_read(booking: Booking, warnings: list[str] | None = None) -> BookingRead:
+def booking_to_read(
+    booking: Booking,
+    warnings: list[str] | None = None,
+    *,
+    db: Session | None = None,
+) -> BookingRead:
     services: list[BookingServiceRead] = []
     for bs in booking.booking_services:
         services.append(
@@ -149,6 +155,7 @@ def booking_to_read(booking: Booking, warnings: list[str] | None = None) -> Book
                 service_name=bs.service.name if bs.service else "",
                 group_name=bs.service.group.name if bs.service and bs.service.group else "",
                 daily_price=float(bs.service.daily_price or 0) if bs.service else 0,
+                deposit=float(bs.service.deposit or 0) if bs.service else 0,
                 start_date=bs.start_date,
                 end_date=bs.end_date,
             )
@@ -183,6 +190,9 @@ def booking_to_read(booking: Booking, warnings: list[str] | None = None) -> Book
         )
         for a in booking.amendments
     ]
+    deposit_due = 0.0
+    if db is not None:
+        deposit_due = calculate_deposit_due(db, booking)
     return BookingRead(
         id=booking.id,
         group_name=booking.group_name,
@@ -191,6 +201,8 @@ def booking_to_read(booking: Booking, warnings: list[str] | None = None) -> Book
         created_at=booking.created_at,
         notes=booking.notes or "",
         group_leader=booking.group_leader or "",
+        deposit_due=deposit_due,
+        deposit_paid_at=booking.deposit_paid_at,
         pitch_ids=pitch_ids,
         pitch_segments=segments,
         persons=booking.persons,
@@ -238,7 +250,7 @@ def list_bookings(
         end = to_date or date.max
         bookings = [b for b in bookings if b.start_date < end and start < b.end_date]
     bookings.sort(key=lambda b: b.start_date)
-    return [booking_to_read(b) for b in bookings]
+    return [booking_to_read(b, db=db) for b in bookings]
 
 
 @router.get("/gantt", response_model=list[BookingGanttItem])
@@ -308,7 +320,7 @@ def create_booking(payload: BookingCreate, db: Session = Depends(get_db)) -> Boo
     )
     db.add(booking)
     db.commit()
-    return booking_to_read(_load_booking(db, booking.id), warnings=warnings)
+    return booking_to_read(_load_booking(db, booking.id), warnings=warnings, db=db)
 
 
 @router.post("/parse-gaesteblatt", response_model=GaesteblattImportDraft)
@@ -383,6 +395,24 @@ def get_invoice(booking_id: int, db: Session = Depends(get_db)) -> InvoiceRead:
     if not booking:
         raise HTTPException(status_code=404, detail="Booking not found")
     return build_invoice(db, booking, assign_number=True)
+
+
+@router.post("/{booking_id}/deposit/toggle", response_model=DepositToggleRead)
+def toggle_deposit(booking_id: int, db: Session = Depends(get_db)) -> DepositToggleRead:
+    booking = load_booking_for_invoice(db, booking_id)
+    if not booking:
+        raise HTTPException(status_code=404, detail="Booking not found")
+    if booking.deposit_paid_at is None:
+        booking.deposit_paid_at = datetime.now(timezone.utc)
+    else:
+        booking.deposit_paid_at = None
+    db.commit()
+    db.refresh(booking)
+    return DepositToggleRead(
+        booking_id=booking.id,
+        deposit_due=calculate_deposit_due(db, booking),
+        deposit_paid_at=booking.deposit_paid_at,
+    )
 
 
 @router.get("/{booking_id}/invoice.pdf")
@@ -519,12 +549,12 @@ def amend_booking(
     _validate_persons(db, payload.persons, booking.start_date, payload.end_date)
     warnings = apply_amendment(db, booking, payload)
     db.commit()
-    return booking_to_read(_load_booking(db, booking.id), warnings=warnings)
+    return booking_to_read(_load_booking(db, booking.id), warnings=warnings, db=db)
 
 
 @router.get("/{booking_id}", response_model=BookingRead)
 def get_booking(booking_id: int, db: Session = Depends(get_db)) -> BookingRead:
-    return booking_to_read(_load_booking(db, booking_id))
+    return booking_to_read(_load_booking(db, booking_id), db=db)
 
 
 @router.patch("/{booking_id}", response_model=BookingRead)
@@ -540,7 +570,7 @@ def update_booking(
         if "group_leader" in data:
             booking.group_leader = data["group_leader"] or ""
         db.commit()
-        return booking_to_read(_load_booking(db, booking.id))
+        return booking_to_read(_load_booking(db, booking.id), db=db)
 
     if not _booking_fully_editable(booking):
         raise HTTPException(
@@ -618,7 +648,7 @@ def update_booking(
         )
 
     db.commit()
-    return booking_to_read(_load_booking(db, booking.id), warnings=warnings)
+    return booking_to_read(_load_booking(db, booking.id), warnings=warnings, db=db)
 
 
 @router.delete("/{booking_id}", status_code=status.HTTP_204_NO_CONTENT)

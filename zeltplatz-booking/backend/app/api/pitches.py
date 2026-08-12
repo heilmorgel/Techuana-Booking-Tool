@@ -118,4 +118,4 @@ def list_pitch_bookings(pitch_id: int, db: Session = Depends(get_db)) -> list[Bo
         .unique()
         .all()
     )
-    return [booking_to_read(b) for b in bookings]
+    return [booking_to_read(b, db=db) for b in bookings]

@@ -91,14 +91,14 @@
             </tr>
             <tr v-for="(line, idx) in group.lines" :key="`${group.key}-${line.id ?? idx}`">
               <td>{{ line.label }}</td>
-              <td>{{ line.category === 'custom' ? '—' : line.quantity }}</td>
-              <td>{{ line.category === 'custom' ? '—' : formatPrice(line.unit_price) }}</td>
+              <td>{{ line.category === 'custom' || line.category === 'deposit' ? '—' : line.quantity }}</td>
+              <td>{{ line.category === 'custom' || line.category === 'deposit' ? '—' : formatPrice(line.unit_price) }}</td>
               <td>
                 <span v-if="line.start_date && line.end_date">
                   {{ formatPeriod(line.start_date, line.end_date) }}
                 </span>
               </td>
-              <td>{{ line.category === 'custom' ? '—' : line.nights }}</td>
+              <td>{{ line.category === 'custom' || line.category === 'deposit' ? '—' : line.nights }}</td>
               <td>{{ formatPrice(line.amount) }}</td>
               <td>
                 <button
@@ -181,6 +181,7 @@ const GROUP_ORDER = [
   { key: 'pitch', title: 'Zeltplätze' },
   { key: 'person', title: 'Personen' },
   { key: 'service', title: 'Zusatzdienste' },
+  { key: 'deposit', title: 'Kaution' },
   { key: 'custom', title: 'Sonstige Positionen' },
 ]
 

@@ -11,11 +11,12 @@ from reportlab.platypus import HRFlowable, Image, Paragraph, SimpleDocTemplate, 
 
 from app.schemas import InvoiceLine, InvoiceRead
 
-_GROUP_ORDER = ("pitch", "person", "service", "custom")
+_GROUP_ORDER = ("pitch", "person", "service", "deposit", "custom")
 _GROUP_TITLES = {
     "pitch": "Zeltplätze",
     "person": "Personen",
     "service": "Zusatzdienste",
+    "deposit": "Kaution",
     "custom": "Sonstige Positionen",
 }
 
@@ -175,7 +176,7 @@ def render_invoice_pdf(invoice: InvoiceRead, logo_file: Path | None = None) -> b
             period = ""
             if line.start_date and line.end_date:
                 period = _period_short(line.start_date, line.end_date)
-            if category == "custom":
+            if category in ("custom", "deposit"):
                 data.append(
                     [
                         _cell(line.label),

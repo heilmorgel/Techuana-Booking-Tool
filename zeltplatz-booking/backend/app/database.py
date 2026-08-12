@@ -86,12 +86,42 @@ def init_db() -> None:
                     "NOT NULL DEFAULT ''"
                 )
             )
+        # Re-read after possible prior alters in this block
+        booking_cols = _table_cols(conn, "bookings")
+        if booking_cols and "deposit_paid_at" not in booking_cols:
+            conn.execute(text("ALTER TABLE bookings ADD COLUMN deposit_paid_at DATETIME"))
 
         pitch_cols = _table_cols(conn, "pitches")
         if pitch_cols and "daily_price" not in pitch_cols:
             conn.execute(
                 text(
                     "ALTER TABLE pitches ADD COLUMN daily_price NUMERIC(10, 2) "
+                    "NOT NULL DEFAULT 0"
+                )
+            )
+        pitch_cols = _table_cols(conn, "pitches")
+        if pitch_cols and "deposit" not in pitch_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE pitches ADD COLUMN deposit NUMERIC(10, 2) "
+                    "NOT NULL DEFAULT 0"
+                )
+            )
+
+        service_cols = _table_cols(conn, "services")
+        if service_cols and "deposit" not in service_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE services ADD COLUMN deposit NUMERIC(10, 2) "
+                    "NOT NULL DEFAULT 0"
+                )
+            )
+
+        profile_cols = _table_cols(conn, "price_profiles")
+        if profile_cols and "deposit" not in profile_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE price_profiles ADD COLUMN deposit NUMERIC(10, 2) "
                     "NOT NULL DEFAULT 0"
                 )
             )
@@ -230,9 +260,19 @@ def init_db() -> None:
                         id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
                         name VARCHAR(120) NOT NULL UNIQUE,
                         is_default BOOLEAN NOT NULL DEFAULT 0,
-                        sort_order INTEGER NOT NULL DEFAULT 0
+                        sort_order INTEGER NOT NULL DEFAULT 0,
+                        deposit NUMERIC(10, 2) NOT NULL DEFAULT 0
                     )
                     """
+                )
+            )
+            profile_cols = _table_cols(conn, "price_profiles")
+
+        if profile_cols and "deposit" not in profile_cols:
+            conn.execute(
+                text(
+                    "ALTER TABLE price_profiles ADD COLUMN deposit NUMERIC(10, 2) "
+                    "NOT NULL DEFAULT 0"
                 )
             )
             profile_cols = _table_cols(conn, "price_profiles")
@@ -243,8 +283,8 @@ def init_db() -> None:
                 conn.execute(
                     text(
                         """
-                        INSERT INTO price_profiles (name, is_default, sort_order)
-                        VALUES ('Standard', 1, 0)
+                        INSERT INTO price_profiles (name, is_default, sort_order, deposit)
+                        VALUES ('Standard', 1, 0, 0)
                         """
                     )
                 )

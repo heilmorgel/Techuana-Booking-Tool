@@ -25,6 +25,10 @@
           Tagespreis (€)
           <input v-model.number="form.daily_price" type="number" min="0" step="0.01" required />
         </label>
+        <label>
+          Kaution (€)
+          <input v-model.number="form.deposit" type="number" min="0" step="0.01" required />
+        </label>
       </div>
       <div style="display: flex; gap: 0.5rem; flex-wrap: wrap">
         <button class="btn" type="submit">{{ editingId ? 'Aktualisieren' : 'Anlegen' }}</button>
@@ -40,6 +44,7 @@
           <th>Von</th>
           <th>Bis</th>
           <th>Tagespreis</th>
+          <th>Kaution</th>
           <th></th>
         </tr>
       </thead>
@@ -49,6 +54,7 @@
           <td>{{ pitch.available_from }}</td>
           <td>{{ pitch.available_to }}</td>
           <td>{{ formatPrice(pitch.daily_price) }}</td>
+          <td>{{ formatPrice(pitch.deposit) }}</td>
           <td style="display: flex; gap: 0.4rem; justify-content: flex-end">
             <button class="btn secondary" type="button" @click="edit(pitch)">Bearbeiten</button>
             <button class="btn danger" type="button" @click="remove(pitch)">Löschen</button>
@@ -72,6 +78,7 @@ const form = reactive({
   available_from: '',
   available_to: '',
   daily_price: 0,
+  deposit: 0,
 })
 
 function formatPrice(value) {
@@ -84,6 +91,7 @@ function resetForm() {
   form.available_from = ''
   form.available_to = ''
   form.daily_price = 0
+  form.deposit = 0
   error.value = ''
 }
 
@@ -97,6 +105,7 @@ function edit(pitch) {
   form.available_from = pitch.available_from
   form.available_to = pitch.available_to
   form.daily_price = Number(pitch.daily_price || 0)
+  form.deposit = Number(pitch.deposit || 0)
 }
 
 async function save() {
@@ -107,6 +116,7 @@ async function save() {
       available_from: form.available_from,
       available_to: form.available_to,
       daily_price: Number(form.daily_price),
+      deposit: Number(form.deposit),
     }
     if (editingId.value) {
       await api.updatePitch(editingId.value, body)

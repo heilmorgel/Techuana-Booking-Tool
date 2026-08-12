@@ -12,6 +12,23 @@
             <h2>{{ dialogTitle }}</h2>
             <div class="header-actions">
               <button
+                v-if="depositDue > 0"
+                type="button"
+                class="btn btn-sm"
+                :class="depositPaidAt ? '' : 'secondary'"
+                :disabled="!isExisting || togglingDeposit"
+                :title="
+                  !isExisting
+                    ? 'Kaution kann nach dem Speichern markiert werden'
+                    : depositPaidAt
+                      ? 'Klicken zum Zurücksetzen'
+                      : 'Klicken, um Kaution als eingehoben zu markieren'
+                "
+                @click="toggleDeposit"
+              >
+                {{ depositButtonLabel }}
+              </button>
+              <button
                 v-if="canImportGaesteblatt"
                 type="button"
                 class="btn secondary btn-sm"
@@ -386,6 +403,8 @@ const amendments = ref([])
 const pitchSegments = ref([])
 const importInput = ref(null)
 const importing = ref(false)
+const depositPaidAt = ref(null)
+const togglingDeposit = ref(false)
 
 function todayIso() {
   const d = new Date()
@@ -412,6 +431,84 @@ const dialogTitle = computed(() => {
   if (!isExisting.value) return 'Neue Buchung'
   return locked.value ? 'Buchungsdetails' : 'Buchung bearbeiten'
 })
+
+const depositDue = computed(() => {
+  let total = 0
+  const pitchById = new Map(allPitches.value.map((p) => [p.id, p]))
+  for (const p of availablePitches.value) {
+    if (!pitchById.has(p.id)) pitchById.set(p.id, p)
+  }
+  const pitchIds = pitchSegments.value.length
+    ? [...new Set(pitchSegments.value.map((s) => s.pitch_id))]
+    : [...form.pitch_ids]
+  for (const id of pitchIds) {
+    total += Number(pitchById.get(id)?.deposit || 0)
+  }
+
+  const depositByService = new Map()
+  for (const svc of availability.value) {
+    depositByService.set(svc.service_id, Number(svc.deposit || 0))
+  }
+  for (const svc of viewServices.value) {
+    if (!depositByService.has(svc.service_id)) {
+      depositByService.set(svc.service_id, Number(svc.deposit || 0))
+    }
+  }
+  const maxQty = new Map()
+  for (const svc of viewServices.value) {
+    maxQty.set(
+      svc.service_id,
+      Math.max(maxQty.get(svc.service_id) || 0, Number(svc.quantity || 0)),
+    )
+  }
+  for (const [sid, qty] of Object.entries(quantities)) {
+    const id = Number(sid)
+    maxQty.set(id, Math.max(maxQty.get(id) || 0, Number(qty || 0)))
+  }
+  for (const [sid, qty] of maxQty.entries()) {
+    if (qty > 0) total += (depositByService.get(sid) || 0) * qty
+  }
+
+  const seenProfiles = new Set()
+  for (const person of form.persons) {
+    const pid = person.price_profile_id
+    if (!pid || seenProfiles.has(pid)) continue
+    seenProfiles.add(pid)
+    const profile = priceProfiles.value.find((p) => p.id === pid)
+    total += Number(profile?.deposit || 0)
+  }
+  return Math.round(total * 100) / 100
+})
+
+const depositButtonLabel = computed(() => {
+  const amount = new Intl.NumberFormat('de-AT', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  }).format(depositDue.value)
+  let label = `Fällige Kaution: ${amount} €`
+  if (depositPaidAt.value) {
+    const paid = new Date(depositPaidAt.value)
+    const dateLabel = Number.isNaN(paid.getTime())
+      ? ''
+      : paid.toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric' })
+    if (dateLabel) label += ` — bezahlt am ${dateLabel}`
+  }
+  return label
+})
+
+async function toggleDeposit() {
+  if (!isExisting.value || togglingDeposit.value) return
+  togglingDeposit.value = true
+  error.value = ''
+  try {
+    const result = await api.toggleBookingDeposit(props.bookingId)
+    depositPaidAt.value = result.deposit_paid_at
+  } catch (e) {
+    error.value = e.message
+  } finally {
+    togglingDeposit.value = false
+  }
+}
 
 const countries = ref([])
 const homeCountry = ref('AT')
@@ -543,6 +640,8 @@ function reset() {
   amendDialogOpen.value = false
   amendments.value = []
   pitchSegments.value = []
+  depositPaidAt.value = null
+  togglingDeposit.value = false
   availablePitches.value = []
   availability.value = []
   viewServices.value = []
@@ -717,6 +816,7 @@ function applyBookingToForm(booking) {
   viewServices.value = booking.services || []
   pitchSegments.value = booking.pitch_segments || []
   amendments.value = booking.amendments || []
+  depositPaidAt.value = booking.deposit_paid_at || null
   Object.keys(quantities).forEach((k) => delete quantities[k])
   const qtyByService = {}
   for (const svc of booking.services || []) {

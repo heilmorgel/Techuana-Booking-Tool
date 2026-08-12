@@ -27,6 +27,7 @@ def _to_read(service: Service) -> ServiceRead:
         group_name=service.group.name if service.group else "",
         available_quantity=service.available_quantity,
         daily_price=float(service.daily_price or 0),
+        deposit=float(service.deposit or 0),
     )
 
 
@@ -66,6 +67,7 @@ def create_service(payload: ServiceCreate, db: Session = Depends(get_db)) -> Ser
         group_id=payload.group_id,
         available_quantity=payload.available_quantity,
         daily_price=payload.daily_price,
+        deposit=payload.deposit,
     )
     db.add(service)
     db.commit()

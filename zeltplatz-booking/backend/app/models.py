@@ -16,6 +16,7 @@ class Pitch(Base):
     available_from: Mapped[date] = mapped_column(Date, nullable=False)
     available_to: Mapped[date] = mapped_column(Date, nullable=False)
     daily_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
+    deposit: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
 
     booking_pitches: Mapped[list[BookingPitch]] = relationship(
         "BookingPitch",
@@ -46,6 +47,7 @@ class Service(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False)
     available_quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     daily_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
+    deposit: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
 
     group: Mapped[ServiceGroup] = relationship("ServiceGroup", back_populates="services")
     booking_services: Mapped[list[BookingService]] = relationship(
@@ -64,6 +66,7 @@ class Booking(Base):
     notes: Mapped[str] = mapped_column(String(2000), nullable=False, default="")
     group_leader: Mapped[str] = mapped_column(Text, nullable=False, default="")
     invoice_number: Mapped[str | None] = mapped_column(String(32), nullable=True, unique=True)
+    deposit_paid_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
@@ -136,6 +139,7 @@ class PriceProfile(Base):
     name: Mapped[str] = mapped_column(String(120), nullable=False, unique=True)
     is_default: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    deposit: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
 
     elements: Mapped[list[PersonFeeElement]] = relationship(
         "PersonFeeElement",
@@ -193,7 +197,7 @@ class PersonFeeElement(Base):
         ForeignKey("price_profiles.id", ondelete="CASCADE"), nullable=False
     )
     name: Mapped[str] = mapped_column(String(120), nullable=False)
-    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # fixed | age_based
+    kind: Mapped[str] = mapped_column(String(20), nullable=False)  # fixed | age_based | year_based
     daily_price: Mapped[float] = mapped_column(Numeric(10, 2), nullable=False, default=0)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 

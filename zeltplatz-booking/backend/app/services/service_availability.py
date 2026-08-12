@@ -99,6 +99,7 @@ def service_availability_rows(
                 "group_name": service.group.name if service.group else "",
                 "available_quantity": service.available_quantity,
                 "daily_price": float(service.daily_price or 0),
+                "deposit": float(service.deposit or 0),
                 "used": used,
                 "remaining": remaining,
             }

@@ -10,6 +10,7 @@ class PitchBase(BaseModel):
     available_from: date
     available_to: date
     daily_price: float = Field(ge=0, default=0)
+    deposit: float = Field(ge=0, default=0)
 
     @model_validator(mode="after")
     def check_availability_range(self) -> PitchBase:
@@ -27,6 +28,7 @@ class PitchUpdate(BaseModel):
     available_from: date | None = None
     available_to: date | None = None
     daily_price: float | None = Field(default=None, ge=0)
+    deposit: float | None = Field(default=None, ge=0)
 
 
 class PitchRead(PitchBase):
@@ -87,6 +89,7 @@ class BookingServiceRead(BaseModel):
     service_name: str = ""
     group_name: str = ""
     daily_price: float = 0
+    deposit: float = 0
     start_date: date
     end_date: date
 
@@ -160,6 +163,8 @@ class BookingRead(BaseModel):
     created_at: datetime
     notes: str = ""
     group_leader: str = ""
+    deposit_due: float = 0
+    deposit_paid_at: datetime | None = None
     pitch_ids: list[int] = []
     pitch_segments: list[BookingPitchSegmentRead] = []
     persons: list[PersonRead] = []
@@ -216,6 +221,7 @@ class ServiceCreate(BaseModel):
     group_id: int
     available_quantity: int = Field(ge=0)
     daily_price: float = Field(ge=0, default=0)
+    deposit: float = Field(ge=0, default=0)
 
 
 class ServiceUpdate(BaseModel):
@@ -223,6 +229,7 @@ class ServiceUpdate(BaseModel):
     group_id: int | None = None
     available_quantity: int | None = Field(default=None, ge=0)
     daily_price: float | None = Field(default=None, ge=0)
+    deposit: float | None = Field(default=None, ge=0)
 
 
 class ServiceRead(BaseModel):
@@ -234,6 +241,7 @@ class ServiceRead(BaseModel):
     group_name: str = ""
     available_quantity: int
     daily_price: float = 0
+    deposit: float = 0
 
 
 class ServiceAvailabilityRead(BaseModel):
@@ -243,6 +251,7 @@ class ServiceAvailabilityRead(BaseModel):
     group_name: str
     available_quantity: int
     daily_price: float = 0
+    deposit: float = 0
     used: int
     remaining: int
 
@@ -251,12 +260,14 @@ class PriceProfileCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     is_default: bool = False
     sort_order: int = 0
+    deposit: float = Field(ge=0, default=0)
 
 
 class PriceProfileUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
     is_default: bool | None = None
     sort_order: int | None = None
+    deposit: float | None = Field(default=None, ge=0)
 
 
 class PriceProfileRead(BaseModel):
@@ -266,6 +277,7 @@ class PriceProfileRead(BaseModel):
     name: str
     is_default: bool = False
     sort_order: int = 0
+    deposit: float = 0
 
 
 class PersonFeeBracketCreate(BaseModel):
@@ -289,7 +301,7 @@ class PersonFeeBracketRead(PersonFeeBracketCreate):
 class PersonFeeElementCreate(BaseModel):
     price_profile_id: int
     name: str = Field(min_length=1, max_length=120)
-    kind: str = Field(pattern="^(fixed|age_based)$")
+    kind: str = Field(pattern="^(fixed|age_based|year_based)$")
     daily_price: float = Field(ge=0, default=0)
     sort_order: int = 0
     brackets: list[PersonFeeBracketCreate] = Field(default_factory=list)
@@ -298,14 +310,14 @@ class PersonFeeElementCreate(BaseModel):
     def check_kind(self) -> PersonFeeElementCreate:
         if self.kind == "fixed" and self.brackets:
             raise ValueError("fixed elements must not have brackets")
-        if self.kind == "age_based" and not self.brackets:
-            raise ValueError("age_based elements require at least one bracket")
+        if self.kind in ("age_based", "year_based") and not self.brackets:
+            raise ValueError(f"{self.kind} elements require at least one bracket")
         return self
 
 
 class PersonFeeElementUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=120)
-    kind: str | None = Field(default=None, pattern="^(fixed|age_based)$")
+    kind: str | None = Field(default=None, pattern="^(fixed|age_based|year_based)$")
     daily_price: float | None = Field(default=None, ge=0)
     sort_order: int | None = None
     brackets: list[PersonFeeBracketCreate] | None = None
@@ -351,6 +363,8 @@ class InvoiceRead(BaseModel):
     nights: int
     lines: list[InvoiceLine]
     total: float
+    deposit_due: float = 0
+    deposit_paid_at: datetime | None = None
     operator: InvoiceOperator = InvoiceOperator()
 
 
@@ -372,6 +386,12 @@ class InvoiceCustomLineRead(BaseModel):
     label: str
     amount: float
     sort_order: int = 0
+
+
+class DepositToggleRead(BaseModel):
+    booking_id: int
+    deposit_due: float
+    deposit_paid_at: datetime | None = None
 
 
 class BillingListItem(BaseModel):

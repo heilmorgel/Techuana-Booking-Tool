@@ -92,6 +92,16 @@
                 required
               />
             </label>
+            <label>
+              Kaution (€)
+              <input
+                v-model.number="serviceForm.deposit"
+                type="number"
+                min="0"
+                step="0.01"
+                required
+              />
+            </label>
           </div>
           <div style="display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.85rem">
             <button class="btn" type="submit">{{ serviceEditingId ? 'Aktualisieren' : 'Anlegen' }}</button>
@@ -123,6 +133,7 @@
             <th>Gruppe</th>
             <th>Verfügbare Anzahl</th>
             <th>Tagespreis</th>
+            <th>Kaution</th>
             <th></th>
           </tr>
         </thead>
@@ -132,6 +143,7 @@
             <td>{{ service.group_name }}</td>
             <td>{{ service.available_quantity }}</td>
             <td>{{ formatPrice(service.daily_price) }}</td>
+            <td>{{ formatPrice(service.deposit) }}</td>
             <td style="display: flex; gap: 0.4rem; justify-content: flex-end">
               <button class="btn secondary" type="button" @click="editService(service)">Bearbeiten</button>
               <button class="btn danger" type="button" @click="removeService(service)">Löschen</button>
@@ -162,6 +174,7 @@ const serviceForm = reactive({
   group_id: '',
   available_quantity: 0,
   daily_price: 0,
+  deposit: 0,
 })
 
 function formatPrice(value) {
@@ -181,6 +194,7 @@ function resetServiceForm() {
   serviceForm.group_id = groups.value[0] ? String(groups.value[0].id) : ''
   serviceForm.available_quantity = 0
   serviceForm.daily_price = 0
+  serviceForm.deposit = 0
   serviceError.value = ''
 }
 
@@ -239,6 +253,7 @@ function editService(service) {
   serviceForm.group_id = String(service.group_id)
   serviceForm.available_quantity = service.available_quantity
   serviceForm.daily_price = Number(service.daily_price || 0)
+  serviceForm.deposit = Number(service.deposit || 0)
   serviceError.value = ''
 }
 
@@ -250,6 +265,7 @@ async function saveService() {
       group_id: Number(serviceForm.group_id),
       available_quantity: Number(serviceForm.available_quantity),
       daily_price: Number(serviceForm.daily_price),
+      deposit: Number(serviceForm.deposit),
     }
     if (serviceEditingId.value) {
       await api.updateService(serviceEditingId.value, body)

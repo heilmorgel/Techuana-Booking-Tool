@@ -26,6 +26,10 @@
             Reihenfolge
             <input v-model.number="profileForm.sort_order" type="number" />
           </label>
+          <label>
+            Kaution (€)
+            <input v-model.number="profileForm.deposit" type="number" min="0" step="0.01" />
+          </label>
           <label class="checkbox-label">
             <input v-model="profileForm.is_default" type="checkbox" />
             Als Standard markieren
@@ -51,6 +55,7 @@
           <tr>
             <th>Name</th>
             <th>Standard</th>
+            <th>Kaution</th>
             <th></th>
           </tr>
         </thead>
@@ -64,6 +69,7 @@
           >
             <td>{{ p.name }}</td>
             <td>{{ p.is_default ? 'Ja' : '' }}</td>
+            <td>{{ formatPrice(p.deposit) }}</td>
             <td style="display: flex; gap: 0.4rem; justify-content: flex-end" @click.stop>
               <button class="btn secondary" type="button" @click="editProfile(p)">Bearbeiten</button>
               <button
@@ -224,6 +230,7 @@ const profileForm = reactive({
   name: '',
   is_default: false,
   sort_order: 0,
+  deposit: 0,
 })
 
 const elementForm = reactive({
@@ -260,6 +267,7 @@ function resetProfileForm() {
   profileForm.name = ''
   profileForm.is_default = false
   profileForm.sort_order = 0
+  profileForm.deposit = 0
   profileError.value = ''
 }
 
@@ -317,6 +325,7 @@ function editProfile(p) {
   profileForm.name = p.name
   profileForm.is_default = !!p.is_default
   profileForm.sort_order = p.sort_order || 0
+  profileForm.deposit = Number(p.deposit || 0)
   selectedProfileId.value = p.id
 }
 
@@ -327,6 +336,7 @@ async function saveProfile() {
       name: profileForm.name,
       is_default: !!profileForm.is_default,
       sort_order: Number(profileForm.sort_order) || 0,
+      deposit: Number(profileForm.deposit) || 0,
     }
     if (editingProfileId.value) {
       await api.updatePriceProfile(editingProfileId.value, body)

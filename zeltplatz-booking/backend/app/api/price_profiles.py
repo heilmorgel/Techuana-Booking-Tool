@@ -57,6 +57,7 @@ def create_profile(payload: PriceProfileCreate, db: Session = Depends(get_db)) -
         name=payload.name,
         is_default=payload.is_default,
         sort_order=payload.sort_order,
+        deposit=payload.deposit,
     )
     db.add(profile)
     db.flush()
@@ -88,6 +89,8 @@ def update_profile(
         profile.name = data["name"]
     if "sort_order" in data:
         profile.sort_order = data["sort_order"]
+    if "deposit" in data:
+        profile.deposit = data["deposit"]
     if "is_default" in data:
         if data["is_default"]:
             profile.is_default = True
