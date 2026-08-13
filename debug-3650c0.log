@@ -1,2 +1,0 @@
-{"hypothesisId":"C","location":"ingress-sim","timestamp":1786650463056,"message":"index_asset_refs_after_fix","data":{"refs":["./assets/main-DOOPLQrQ.js","./assets/main-D5XQwZlV.js","./assets/main-DyV1wtep.css"],"all_relative":true},"sessionId":"3650c0","runId":"post-fix"}
-{"hypothesisId":"B","location":"ingress-sim","timestamp":1786650463061,"message":"relative_assets_stay_under_ingress","data":{"ok":true,"sample":"./assets/main-DOOPLQrQ.js"},"sessionId":"3650c0","runId":"post-fix"}
