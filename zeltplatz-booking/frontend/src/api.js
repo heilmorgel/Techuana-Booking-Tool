@@ -1,4 +1,20 @@
-const API_BASE = '/api/v1'
+/** App root under HA Ingress or local (/ or /.../ingress-token/). */
+export function appRootPath() {
+  let path = window.location.pathname || '/'
+  if (path.includes('/admin')) {
+    path = path.replace(/\/admin\/?.*$/, '/')
+  } else if (!path.endsWith('/')) {
+    path = path.slice(0, path.lastIndexOf('/') + 1) || '/'
+  }
+  if (!path.endsWith('/')) path += '/'
+  return path
+}
+
+export function apiBasePath() {
+  return `${appRootPath()}api/v1`
+}
+
+const API_BASE = apiBasePath()
 
 async function request(path, options = {}) {
   const res = await fetch(`${API_BASE}${path}`, {

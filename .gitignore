@@ -13,3 +13,5 @@ venv/
 *.pyc
 .DS_Store
 Samples/
+zeltplatz-booking/portable/build/
+zeltplatz-booking/portable/dist/

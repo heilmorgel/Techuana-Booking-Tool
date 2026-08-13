@@ -1,11 +1,12 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import AdminPitchesView from '../views/AdminPitchesView.vue'
 import AdminServicesView from '../views/AdminServicesView.vue'
 import AdminPersonFeesView from '../views/AdminPersonFeesView.vue'
 import AdminOperatorSettingsView from '../views/AdminOperatorSettingsView.vue'
 
+// Hash history keeps admin routes working under HA Ingress (/.../admin/#/...).
 const router = createRouter({
-  history: createWebHistory('/admin/'),
+  history: createWebHashHistory(),
   routes: [
     { path: '/', name: 'admin-pitches', component: AdminPitchesView },
     { path: '/services', name: 'admin-services', component: AdminServicesView },

@@ -1,0 +1,49 @@
+Zeltplatz Buchung — lokales Testsystem
+=====================================
+
+Was Sie brauchen
+----------------
+- Windows 10 oder 11 (64-Bit)
+- Kein Python, kein Node, kein Docker, kein Home Assistant
+
+Start
+-----
+1. ZIP-Datei in einen Ordner entpacken, z. B. auf den Desktop.
+   Nicht direkt aus dem ZIP-Fenster starten.
+2. Start.bat doppelklicken.
+3. Der Browser öffnet die Buchungsansicht:
+     http://127.0.0.1:8000/
+
+Verwaltung (Stammdaten):
+     http://127.0.0.1:8000/admin/
+
+Das schwarze Fenster bitte offen lassen. Schließen beendet das Testsystem.
+
+Windows-Hinweis
+---------------
+Falls Windows das Programm blockiert:
+  Weitere Informationen → Trotzdem ausführen
+
+Oder: Rechtsklick auf Start.bat → Eigenschaften →
+  unten „Zulassen“ / „Sicherheit“ anhaken → OK.
+
+Stoppen
+-------
+- Das schwarze Fenster schließen, oder
+- Stop.bat doppelklicken.
+
+Demodaten zurücksetzen
+----------------------
+Reset-Demodaten.bat setzt Plätze, Dienste und Beispielbuchungen
+wieder auf den Auslieferungsstand. Eigene Testdaten gehen dabei verloren.
+
+Daten
+-----
+Ihre Testdaten liegen im Ordner "data".
+Diesen Ordner nicht löschen, wenn Sie weitermachen möchten.
+
+Probleme
+--------
+- Port 8000 belegt: Stop.bat ausführen und erneut starten.
+- Weiße Seite: Start.bat noch einmal ausführen und 5 Sekunden warten.
+- Nach dem Entpacken nichts passiert: den ganzen Ordner neu entpacken.

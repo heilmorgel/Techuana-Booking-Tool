@@ -1,5 +1,5 @@
 name: "Zeltplatz Buchung"
-version: "0.1.0"
+version: "0.1.1"
 slug: zeltplatz_booking
 description: "Buchungsverwaltung für Pfadfinder-Zeltlagerplätze"
 url: "https://github.com/techuana/zeltplatz-booking"

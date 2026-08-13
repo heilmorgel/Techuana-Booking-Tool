@@ -11,10 +11,13 @@ from datetime import date, timedelta
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent
-DATA = ROOT.parent / ".data"
+if os.environ.get("DATA_DIR"):
+    DATA = Path(os.environ["DATA_DIR"])
+else:
+    DATA = ROOT.parent / ".data"
+    os.environ["DATA_DIR"] = str(DATA)
 DATA.mkdir(parents=True, exist_ok=True)
 
-os.environ["DATA_DIR"] = str(DATA)
 os.environ["DEV_MODE"] = "1"
 os.environ.setdefault("TZ", "Europe/Vienna")
 
@@ -100,9 +103,21 @@ def seed() -> None:
         db.add_all(services)
         db.flush()
 
-        standard = PriceProfile(name="Standard", is_default=True, sort_order=0)
-        reduced = PriceProfile(name="Ermäßigt", is_default=False, sort_order=1)
-        db.add_all([standard, reduced])
+        standard = db.query(PriceProfile).filter(PriceProfile.name == "Standard").first()
+        if standard is None:
+            standard = PriceProfile(name="Standard", is_default=True, sort_order=0)
+            db.add(standard)
+        else:
+            standard.is_default = True
+            standard.sort_order = 0
+
+        reduced = db.query(PriceProfile).filter(PriceProfile.name == "Ermäßigt").first()
+        if reduced is None:
+            reduced = PriceProfile(name="Ermäßigt", is_default=False, sort_order=1)
+            db.add(reduced)
+        else:
+            reduced.is_default = False
+            reduced.sort_order = 1
         db.flush()
 
         tax = PersonFeeElement(

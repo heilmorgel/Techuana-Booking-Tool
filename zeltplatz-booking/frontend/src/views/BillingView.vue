@@ -175,7 +175,7 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
-import { api } from '../api'
+import { api, apiBasePath } from '../api'
 
 const GROUP_ORDER = [
   { key: 'pitch', title: 'Zeltplätze' },
@@ -242,7 +242,7 @@ function formatPeriod(start, end) {
 }
 
 function pdfUrl(id) {
-  return `/api/v1/bookings/${id}/invoice.pdf`
+  return `${apiBasePath()}/bookings/${id}/invoice.pdf`
 }
 
 function closeDetail() {
