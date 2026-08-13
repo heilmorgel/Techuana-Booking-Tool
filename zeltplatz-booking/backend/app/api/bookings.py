@@ -325,67 +325,16 @@ def create_booking(payload: BookingCreate, db: Session = Depends(get_db)) -> Boo
 
 @router.post("/parse-gaesteblatt", response_model=GaesteblattImportDraft)
 async def parse_gaesteblatt(file: UploadFile = File(...)) -> GaesteblattImportDraft:
-    # #region agent log
-    import json as _json
-    import time as _time
-    from pathlib import Path as _Path
-
-    _log_path = _Path(r"d:\Coding\Techuana_Homeassistant\debug-ad5dd0.log")
-
-    def _dbg(hyp: str, loc: str, msg: str, data: dict) -> None:
-        try:
-            with _log_path.open("a", encoding="utf-8") as _f:
-                _f.write(
-                    _json.dumps(
-                        {
-                            "sessionId": "ad5dd0",
-                            "runId": "repro",
-                            "hypothesisId": hyp,
-                            "location": loc,
-                            "message": msg,
-                            "data": data,
-                            "timestamp": int(_time.time() * 1000),
-                        },
-                        ensure_ascii=False,
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-
-    # #endregion
     filename = (file.filename or "").lower()
-    _dbg("D", "bookings.py:parse_gaesteblatt:entry", "parse endpoint entered", {"filename": filename})
     if filename and not filename.endswith((".xlsx", ".xltx", ".xlsm")):
         raise HTTPException(
             status_code=422,
             detail="Bitte eine Excel-Datei (.xlsx / .xltx) hochladen",
         )
-    t0 = _time.perf_counter()
     content = await file.read()
-    _dbg(
-        "D",
-        "bookings.py:parse_gaesteblatt:read",
-        "file bytes read",
-        {"bytes": len(content), "seconds": round(_time.perf_counter() - t0, 3)},
-    )
     try:
-        t1 = _time.perf_counter()
-        draft = parse_gaesteblatt_bytes(content)
-        _dbg(
-            "B",
-            "bookings.py:parse_gaesteblatt:done",
-            "parse finished",
-            {
-                "seconds": round(_time.perf_counter() - t1, 3),
-                "group_name": draft.group_name,
-                "person_count": len(draft.persons),
-                "has_dates": bool(draft.start_date and draft.end_date),
-            },
-        )
-        return draft
+        return parse_gaesteblatt_bytes(content)
     except ValueError as exc:
-        _dbg("B", "bookings.py:parse_gaesteblatt:error", "parse failed", {"error": str(exc)})
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 

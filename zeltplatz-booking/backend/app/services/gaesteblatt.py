@@ -215,45 +215,12 @@ def _build_merge_map(ws) -> dict[tuple[int, int], tuple[int, int]]:
 
 
 def parse_gaesteblatt_bytes(content: bytes) -> GaesteblattImportDraft:
-    # #region agent log
-    import json as _json
-    import time as _time
-    from pathlib import Path as _Path
-
-    _log_path = _Path(r"d:\Coding\Techuana_Homeassistant\debug-ad5dd0.log")
-
-    def _dbg(hyp: str, loc: str, msg: str, data: dict) -> None:
-        try:
-            with _log_path.open("a", encoding="utf-8") as _f:
-                _f.write(
-                    _json.dumps(
-                        {
-                            "sessionId": "ad5dd0",
-                            "runId": "repro",
-                            "hypothesisId": hyp,
-                            "location": loc,
-                            "message": msg,
-                            "data": data,
-                            "timestamp": int(_time.perf_counter() * 1000)
-                            if False
-                            else int(_time.time() * 1000),
-                        },
-                        ensure_ascii=False,
-                    )
-                    + "\n"
-                )
-        except Exception:
-            pass
-
-    # #endregion
     if not content:
         raise ValueError("Leere Datei")
-    t0 = _time.perf_counter()
     try:
         workbook = load_workbook(BytesIO(content), data_only=False, read_only=False)
     except Exception as exc:  # noqa: BLE001
         raise ValueError(f"Excel-Datei konnte nicht gelesen werden: {exc}") from exc
-    _dbg("A", "gaesteblatt.py:load", "workbook loaded", {"seconds": round(_time.perf_counter() - t0, 3)})
 
     try:
         ws = _find_gaesteblatt_sheet(workbook)
@@ -263,9 +230,7 @@ def parse_gaesteblatt_bytes(content: bytes) -> GaesteblattImportDraft:
 
     warnings: list[str] = []
     try:
-        t1 = _time.perf_counter()
         merge_map = _build_merge_map(ws)
-        merged_n = len(ws.merged_cells.ranges)
 
         def cell(row: int, col: int) -> Any:
             return _read_merged(ws, row, col, merge_map)
@@ -298,9 +263,7 @@ def parse_gaesteblatt_bytes(content: bytes) -> GaesteblattImportDraft:
         )
 
         persons: list[GaesteblattPersonDraft] = []
-        rows_scanned = 0
         for row in range(_PERSON_START_ROW, _PERSON_END_ROW + 1):
-            rows_scanned += 1
             last = _cell_str(cell(row, 2))
             if not last:
                 # Gästeblatt: Personenblock endet bei erster leerer Nachnamens-Zelle
@@ -321,18 +284,6 @@ def parse_gaesteblatt_bytes(content: bytes) -> GaesteblattImportDraft:
                     end_date=person_end,
                 )
             )
-
-        _dbg(
-            "C",
-            "gaesteblatt.py:persons",
-            "person loop done",
-            {
-                "seconds": round(_time.perf_counter() - t1, 3),
-                "merged": merged_n,
-                "rows_scanned": rows_scanned,
-                "persons": len(persons),
-            },
-        )
 
         leader_name = _join_name(leader_last, leader_first)
         if leader_name:
