@@ -4,6 +4,7 @@ from fastapi import APIRouter
 from sqlalchemy.orm import Session
 from fastapi import Depends
 
+from app import APP_VERSION
 from app.countries import COUNTRIES
 from app.database import get_db
 from app.services.operator_settings import get_or_create_operator_settings
@@ -13,7 +14,7 @@ router = APIRouter(tags=["meta"])
 
 @router.get("/health")
 def health() -> dict[str, str]:
-    return {"status": "ok"}
+    return {"status": "ok", "version": APP_VERSION}
 
 
 @router.get("/countries")

@@ -7,6 +7,7 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 
+from app import APP_VERSION
 from app.api import (
     billing,
     bookings,
@@ -29,7 +30,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Zeltplatz Buchung", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Zeltplatz Buchung", version=APP_VERSION, lifespan=lifespan)
 app.add_middleware(ApiTokenMiddleware)
 
 api = FastAPI()
