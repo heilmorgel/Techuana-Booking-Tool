@@ -424,3 +424,10 @@ class OperatorSettingsRead(BaseModel):
     iban: str = ""
     has_logo: bool = False
     home_country: str = "AT"
+
+
+class DemoResetResult(BaseModel):
+    pitches: int
+    service_groups: int
+    services: int
+    bookings: int

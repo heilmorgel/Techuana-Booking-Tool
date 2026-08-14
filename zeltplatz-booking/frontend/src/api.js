@@ -193,4 +193,5 @@ export const api = {
     return data
   },
   deleteOperatorLogo: () => request('/operator-settings/logo', { method: 'DELETE' }),
+  resetDemoData: () => request('/demo/reset', { method: 'POST' }),
 }

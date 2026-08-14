@@ -10,6 +10,7 @@ from fastapi.staticfiles import StaticFiles
 from app.api import (
     billing,
     bookings,
+    demo,
     meta,
     operator_settings,
     person_fees,
@@ -41,6 +42,7 @@ api.include_router(person_fees.router)
 api.include_router(price_profiles.router)
 api.include_router(billing.router)
 api.include_router(operator_settings.router)
+api.include_router(demo.router)
 app.mount("/api/v1", api)
 
 # Also expose /api/health for simpler probes

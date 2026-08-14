@@ -1,6 +1,7 @@
 from app.api import (
     billing,
     bookings,
+    demo,
     meta,
     operator_settings,
     person_fees,
@@ -13,6 +14,7 @@ from app.api import (
 __all__ = [
     "billing",
     "bookings",
+    "demo",
     "meta",
     "operator_settings",
     "person_fees",

@@ -74,6 +74,51 @@
       <p v-if="savedHint" class="muted">{{ savedHint }}</p>
     </form>
   </section>
+
+  <section class="panel danger-zone">
+    <div class="panel-header">
+      <div>
+        <h2>Demodaten</h2>
+        <p class="muted">Aktuelle App-Daten löschen und Demo-Stammdaten neu anlegen</p>
+      </div>
+    </div>
+    <p class="muted tiny">
+      Buchungen, Zeltplätze, Dienste, Preisprofile, Rechnungen und das Logo werden unwiderruflich
+      gelöscht.
+    </p>
+    <button class="btn danger" type="button" @click="openReset">Auf Demodaten zurücksetzen</button>
+    <p v-if="resetError && !resetOpen" class="error">{{ resetError }}</p>
+  </section>
+
+  <div v-if="resetOpen" class="modal-backdrop confirm-layer" @click.self="closeReset">
+    <div class="modal modal-confirm" role="dialog" aria-modal="true">
+      <h3>Alle Daten löschen?</h3>
+      <p class="muted tiny">
+        Die aktuellen Daten der installierten App werden unwiderruflich gelöscht und durch die
+        Demodaten ersetzt.
+      </p>
+      <div class="checkbox-list">
+        <label>
+          <input v-model="resetAcknowledged" type="checkbox" />
+          Ich verstehe, dass alle aktuellen Daten gelöscht werden
+        </label>
+      </div>
+      <p v-if="resetError" class="error">{{ resetError }}</p>
+      <div class="warning-actions">
+        <button
+          type="button"
+          class="btn danger"
+          :disabled="!resetAcknowledged || resetting"
+          @click="confirmReset"
+        >
+          {{ resetting ? 'Setze zurück…' : 'Endgültig zurücksetzen' }}
+        </button>
+        <button type="button" class="btn secondary" :disabled="resetting" @click="closeReset">
+          Abbrechen
+        </button>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
@@ -93,6 +138,10 @@ const error = ref('')
 const savedHint = ref('')
 const saving = ref(false)
 const savingLogo = ref(false)
+const resetOpen = ref(false)
+const resetAcknowledged = ref(false)
+const resetting = ref(false)
+const resetError = ref('')
 
 function refreshLogoSrc() {
   logoSrc.value = hasLogo.value ? `${api.operatorLogoUrl()}?t=${Date.now()}` : ''
@@ -150,6 +199,32 @@ async function onLogoSelected(event) {
     error.value = e.message
   } finally {
     savingLogo.value = false
+  }
+}
+
+function openReset() {
+  resetError.value = ''
+  resetAcknowledged.value = false
+  resetOpen.value = true
+}
+
+function closeReset() {
+  if (resetting.value) return
+  resetOpen.value = false
+  resetAcknowledged.value = false
+}
+
+async function confirmReset() {
+  if (!resetAcknowledged.value) return
+  resetError.value = ''
+  resetting.value = true
+  try {
+    await api.resetDemoData()
+    window.location.reload()
+  } catch (e) {
+    resetError.value = e.message
+  } finally {
+    resetting.value = false
   }
 }
 
@@ -224,5 +299,17 @@ onMounted(async () => {
   inset: 0;
   opacity: 0;
   cursor: pointer;
+}
+
+.danger-zone {
+  margin-top: 1.25rem;
+}
+
+.danger-zone .btn.danger {
+  margin-top: 0.65rem;
+}
+
+.modal-confirm .checkbox-list {
+  margin: 0.75rem 0 0.25rem;
 }
 </style>
