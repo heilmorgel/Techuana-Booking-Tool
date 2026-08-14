@@ -75,7 +75,7 @@
     </form>
   </section>
 
-  <section class="panel danger-zone">
+  <section class="panel danger-zone" data-debug-demo-reset="1">
     <div class="panel-header">
       <div>
         <h2>Demodaten</h2>
@@ -122,7 +122,7 @@
 </template>
 
 <script setup>
-import { onMounted, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref } from 'vue'
 import { api } from '../api'
 
 const form = reactive({
@@ -246,11 +246,30 @@ async function removeLogo() {
 }
 
 onMounted(async () => {
+  // #region agent log
+  fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8e282a'},body:JSON.stringify({sessionId:'8e282a',runId:'pre-fix',hypothesisId:'A',location:'AdminOperatorSettingsView.vue:onMounted',message:'operator view mounted',data:{hasResetApi:typeof api.resetDemoData==='function',href:window.location.href,path:window.location.pathname,hash:window.location.hash,inIframe:window.parent!==window},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
   try {
     await load()
+    // #region agent log
+    try {
+      const health = await api.health()
+      fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8e282a'},body:JSON.stringify({sessionId:'8e282a',runId:'pre-fix',hypothesisId:'A',location:'AdminOperatorSettingsView.vue:health',message:'backend health',data:{health},timestamp:Date.now()})}).catch(()=>{});
+    } catch (healthErr) {
+      fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8e282a'},body:JSON.stringify({sessionId:'8e282a',runId:'pre-fix',hypothesisId:'A',location:'AdminOperatorSettingsView.vue:health',message:'backend health failed',data:{error:String(healthErr)},timestamp:Date.now()})}).catch(()=>{});
+    }
+    // #endregion
   } catch (e) {
     error.value = e.message
   }
+  await nextTick()
+  // #region agent log
+  const zone = document.querySelector('[data-debug-demo-reset="1"]')
+  const btn = zone ? zone.querySelector('button') : null
+  const zrect = zone ? zone.getBoundingClientRect() : null
+  const cs = zone ? window.getComputedStyle(zone) : null
+  fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8e282a'},body:JSON.stringify({sessionId:'8e282a',runId:'pre-fix',hypothesisId:'B',location:'AdminOperatorSettingsView.vue:layout',message:'danger-zone layout',data:{found:Boolean(zone),btnText:btn?String(btn.textContent||'').trim():null,rect:zrect?{top:zrect.top,bottom:zrect.bottom,height:zrect.height,width:zrect.width}:null,viewportH:window.innerHeight,scrollH:document.documentElement.scrollHeight,display:cs?cs.display:null,visibility:cs?cs.visibility:null,inViewport:zrect?zrect.top<window.innerHeight&&zrect.bottom>0:false},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
 })
 </script>
 
