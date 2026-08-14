@@ -6,6 +6,8 @@
 **/*.db
 **/node_modules/
 **/dist/
+!zeltplatz-booking/portable/dist/
+!zeltplatz-booking/portable/dist/Zeltplatz-Buchung-Test.zip
 .env
 .venv/
 venv/
