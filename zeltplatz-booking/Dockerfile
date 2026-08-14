@@ -1,6 +1,8 @@
 ARG BUILD_FROM
 FROM ${BUILD_FROM}
 
+ARG BUILD_VERSION=dev
+
 ENV LANG=C.UTF-8
 ENV PYTHONUNBUFFERED=1
 ENV DATA_DIR=/data
@@ -18,7 +20,11 @@ WORKDIR /app/frontend
 RUN npm install
 
 COPY frontend/ /app/frontend/
-RUN npm run build
+COPY config.yaml /app/addon-config.yaml
+# BUILD_VERSION is injected by HA Supervisor; including it here busts the
+# cached frontend layer on every add-on version bump.
+RUN echo "${BUILD_VERSION}" > .build-version \
+  && VITE_APP_VERSION="${BUILD_VERSION}" npm run build
 
 WORKDIR /app
 COPY backend/ /app/backend/

@@ -64,6 +64,13 @@ if _static_dir is not None:
 
     _user_index = _static_dir / "index.html"
     _admin_index = _static_dir / "admin" / "index.html"
+    _html_headers = {
+        "Cache-Control": "no-store, no-cache, must-revalidate",
+        "Pragma": "no-cache",
+    }
+
+    def _html(path: Path) -> FileResponse:
+        return FileResponse(path, headers=_html_headers)
 
     @app.get("/{full_path:path}", response_model=None)
     async def spa_fallback(full_path: str):
@@ -71,8 +78,10 @@ if _static_dir is not None:
             return RedirectResponse(url="/admin/")
         candidate = _static_dir / full_path
         if full_path and candidate.is_file():
+            if candidate.suffix.lower() in {".html", ""}:
+                return _html(candidate)
             return FileResponse(candidate)
         if full_path.startswith("admin/"):
             if _admin_index.is_file():
-                return FileResponse(_admin_index)
-        return FileResponse(_user_index)
+                return _html(_admin_index)
+        return _html(_user_index)

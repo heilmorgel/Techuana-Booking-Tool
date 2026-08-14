@@ -28,7 +28,7 @@ def test_health(client: TestClient):
     r = client.get("/api/v1/health")
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
-    assert r.json()["version"] == "0.1.5"
+    assert r.json()["version"] == "0.1.6"
 
 
 def test_create_pitch_and_booking_conflict(client: TestClient):

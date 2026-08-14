@@ -5,7 +5,7 @@
         <h1>Betreiber / Verein</h1>
         <p class="muted">Kopf- und Fußdaten für Rechnungen inkl. Logo</p>
       </div>
-      <button class="btn danger" type="button" @click="openReset">
+      <button class="btn danger reset-demo-btn" type="button" @click="openReset">
         Auf Demodaten zurücksetzen
       </button>
     </div>
@@ -288,6 +288,11 @@ onMounted(async () => {
   inset: 0;
   opacity: 0;
   cursor: pointer;
+}
+
+.reset-demo-btn {
+  flex-shrink: 0;
+  align-self: center;
 }
 
 .modal-confirm .checkbox-list {

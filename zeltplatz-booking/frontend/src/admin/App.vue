@@ -3,7 +3,7 @@
     <header class="topbar">
       <div class="brand">
         <strong>Zeltplatz Verwaltung</strong>
-        <span>Admin · Stammdaten &amp; Einstellungen</span>
+        <span>Admin · Stammdaten &amp; Einstellungen <template v-if="appVersion">· {{ appVersion }}</template></span>
       </div>
       <nav class="nav">
         <RouterLink to="/">Zeltplätze</RouterLink>
@@ -18,4 +18,6 @@
 
 <script setup>
 import { RouterLink, RouterView } from 'vue-router'
+
+const appVersion = import.meta.env.VITE_APP_VERSION || ''
 </script>
