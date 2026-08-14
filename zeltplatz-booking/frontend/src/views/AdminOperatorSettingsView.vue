@@ -5,6 +5,9 @@
         <h1>Betreiber / Verein</h1>
         <p class="muted">Kopf- und Fußdaten für Rechnungen inkl. Logo</p>
       </div>
+      <button class="btn danger" type="button" @click="openReset">
+        Auf Demodaten zurücksetzen
+      </button>
     </div>
 
     <form class="grid-form" @submit.prevent="save">
@@ -72,22 +75,8 @@
       </div>
       <p v-if="error" class="error">{{ error }}</p>
       <p v-if="savedHint" class="muted">{{ savedHint }}</p>
+      <p v-if="resetError && !resetOpen" class="error">{{ resetError }}</p>
     </form>
-  </section>
-
-  <section class="panel danger-zone" data-debug-demo-reset="1">
-    <div class="panel-header">
-      <div>
-        <h2>Demodaten</h2>
-        <p class="muted">Aktuelle App-Daten löschen und Demo-Stammdaten neu anlegen</p>
-      </div>
-    </div>
-    <p class="muted tiny">
-      Buchungen, Zeltplätze, Dienste, Preisprofile, Rechnungen und das Logo werden unwiderruflich
-      gelöscht.
-    </p>
-    <button class="btn danger" type="button" @click="openReset">Auf Demodaten zurücksetzen</button>
-    <p v-if="resetError && !resetOpen" class="error">{{ resetError }}</p>
   </section>
 
   <div v-if="resetOpen" class="modal-backdrop confirm-layer" @click.self="closeReset">
@@ -122,7 +111,7 @@
 </template>
 
 <script setup>
-import { nextTick, onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { api } from '../api'
 
 const form = reactive({
@@ -246,30 +235,11 @@ async function removeLogo() {
 }
 
 onMounted(async () => {
-  // #region agent log
-  fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8e282a'},body:JSON.stringify({sessionId:'8e282a',runId:'pre-fix',hypothesisId:'A',location:'AdminOperatorSettingsView.vue:onMounted',message:'operator view mounted',data:{hasResetApi:typeof api.resetDemoData==='function',href:window.location.href,path:window.location.pathname,hash:window.location.hash,inIframe:window.parent!==window},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
   try {
     await load()
-    // #region agent log
-    try {
-      const health = await api.health()
-      fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8e282a'},body:JSON.stringify({sessionId:'8e282a',runId:'pre-fix',hypothesisId:'A',location:'AdminOperatorSettingsView.vue:health',message:'backend health',data:{health},timestamp:Date.now()})}).catch(()=>{});
-    } catch (healthErr) {
-      fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8e282a'},body:JSON.stringify({sessionId:'8e282a',runId:'pre-fix',hypothesisId:'A',location:'AdminOperatorSettingsView.vue:health',message:'backend health failed',data:{error:String(healthErr)},timestamp:Date.now()})}).catch(()=>{});
-    }
-    // #endregion
   } catch (e) {
     error.value = e.message
   }
-  await nextTick()
-  // #region agent log
-  const zone = document.querySelector('[data-debug-demo-reset="1"]')
-  const btn = zone ? zone.querySelector('button') : null
-  const zrect = zone ? zone.getBoundingClientRect() : null
-  const cs = zone ? window.getComputedStyle(zone) : null
-  fetch('http://127.0.0.1:7445/ingest/e7a5a80c-ec6a-4fcb-9858-1b2fce84a5b6',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'8e282a'},body:JSON.stringify({sessionId:'8e282a',runId:'pre-fix',hypothesisId:'B',location:'AdminOperatorSettingsView.vue:layout',message:'danger-zone layout',data:{found:Boolean(zone),btnText:btn?String(btn.textContent||'').trim():null,rect:zrect?{top:zrect.top,bottom:zrect.bottom,height:zrect.height,width:zrect.width}:null,viewportH:window.innerHeight,scrollH:document.documentElement.scrollHeight,display:cs?cs.display:null,visibility:cs?cs.visibility:null,inViewport:zrect?zrect.top<window.innerHeight&&zrect.bottom>0:false},timestamp:Date.now()})}).catch(()=>{});
-  // #endregion
 })
 </script>
 
@@ -318,14 +288,6 @@ onMounted(async () => {
   inset: 0;
   opacity: 0;
   cursor: pointer;
-}
-
-.danger-zone {
-  margin-top: 1.25rem;
-}
-
-.danger-zone .btn.danger {
-  margin-top: 0.65rem;
 }
 
 .modal-confirm .checkbox-list {
