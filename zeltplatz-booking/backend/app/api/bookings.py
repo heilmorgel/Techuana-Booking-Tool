@@ -41,6 +41,7 @@ from app.services.availability import assert_pitches_bookable, pitch_ids_active_
 from app.services.billing import build_invoice, calculate_deposit_due, load_booking_for_invoice
 from app.services.gaesteblatt import parse_gaesteblatt_bytes
 from app.services.invoice_pdf import render_invoice_pdf
+from app.services.mqtt_ha import schedule_booking_ha_publish
 from app.services.operator_settings import get_or_create_operator_settings, logo_path
 from app.services.service_availability import check_services
 
@@ -320,6 +321,7 @@ def create_booking(payload: BookingCreate, db: Session = Depends(get_db)) -> Boo
     )
     db.add(booking)
     db.commit()
+    schedule_booking_ha_publish()
     return booking_to_read(_load_booking(db, booking.id), warnings=warnings, db=db)
 
 
@@ -498,6 +500,7 @@ def amend_booking(
     _validate_persons(db, payload.persons, booking.start_date, payload.end_date)
     warnings = apply_amendment(db, booking, payload)
     db.commit()
+    schedule_booking_ha_publish()
     return booking_to_read(_load_booking(db, booking.id), warnings=warnings, db=db)
 
 
@@ -519,6 +522,7 @@ def update_booking(
         if "group_leader" in data:
             booking.group_leader = data["group_leader"] or ""
         db.commit()
+        schedule_booking_ha_publish()
         return booking_to_read(_load_booking(db, booking.id), db=db)
 
     if not _booking_fully_editable(booking):
@@ -597,6 +601,7 @@ def update_booking(
         )
 
     db.commit()
+    schedule_booking_ha_publish()
     return booking_to_read(_load_booking(db, booking.id), warnings=warnings, db=db)
 
 
@@ -605,3 +610,4 @@ def delete_booking(booking_id: int, db: Session = Depends(get_db)) -> None:
     booking = _load_booking(db, booking_id)
     db.delete(booking)
     db.commit()
+    schedule_booking_ha_publish()

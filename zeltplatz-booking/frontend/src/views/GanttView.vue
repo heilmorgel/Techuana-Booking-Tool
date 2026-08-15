@@ -8,61 +8,66 @@
       <button class="btn" type="button" @click="openNewBooking">Neue Buchung</button>
     </div>
 
-    <div class="grid-2" style="margin-bottom: 1rem">
-      <label>
-        Von
-        <input v-model="fromDate" type="date" @change="load" />
-      </label>
-      <label>
-        Bis
-        <input v-model="toDate" type="date" @change="load" />
-      </label>
-    </div>
+    <div class="gantt-layout">
+      <div class="gantt-main">
+        <p v-if="error" class="error">{{ error }}</p>
+        <p v-else-if="!rows.length" class="muted">Noch keine Buchungen im gewählten Zeitraum.</p>
 
-    <p v-if="error" class="error">{{ error }}</p>
-    <p v-else-if="!rows.length" class="muted">Noch keine Buchungen im gewählten Zeitraum.</p>
-
-    <div v-else class="gantt-wrap">
-      <div class="gantt-chart" :style="{ minWidth: `${labelWidth + days.length * dayWidth}px` }">
-        <div class="gantt-header">
-          <div class="gantt-label-col" :style="{ width: `${labelWidth}px` }">Platz</div>
-          <div class="gantt-days">
-            <div
-              v-for="day in days"
-              :key="day.key"
-              class="gantt-day"
-              :class="{ weekend: day.weekend, today: day.today }"
-              :style="{ width: `${dayWidth}px` }"
-              :title="day.label"
-            >
-              <span>{{ day.short }}</span>
+        <div v-else class="gantt-wrap">
+          <div class="gantt-chart" :style="{ minWidth: `${labelWidth + days.length * dayWidth}px` }">
+            <div class="gantt-header">
+              <div class="gantt-label-col" :style="{ width: `${labelWidth}px` }">Platz</div>
+              <div class="gantt-days">
+                <div
+                  v-for="day in days"
+                  :key="day.key"
+                  class="gantt-day"
+                  :class="{ weekend: day.weekend, today: day.today }"
+                  :style="{ width: `${dayWidth}px` }"
+                  :title="day.label"
+                >
+                  <span>{{ day.short }}</span>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
 
-        <div v-for="row in rows" :key="row.pitchId" class="gantt-row">
-          <div class="gantt-label-col" :style="{ width: `${labelWidth}px` }">{{ row.pitchName }}</div>
-          <div class="gantt-track" :style="{ width: `${days.length * dayWidth}px` }">
-            <div
-              v-for="day in days"
-              :key="`${row.pitchId}-${day.key}`"
-              class="gantt-cell"
-              :class="{ weekend: day.weekend, today: day.today }"
-              :style="{ width: `${dayWidth}px` }"
-            />
-            <div
-              v-for="bar in row.bars"
-              :key="bar.id"
-              class="gantt-bar"
-              :style="barStyle(bar)"
-              :title="`${bar.groupName}: ${bar.start} – ${bar.end}`"
-              @click="openBooking(bar.bookingId)"
-            >
-              {{ bar.groupName }}
+            <div v-for="row in rows" :key="row.pitchId" class="gantt-row">
+              <div class="gantt-label-col" :style="{ width: `${labelWidth}px` }">{{ row.pitchName }}</div>
+              <div class="gantt-track" :style="{ width: `${days.length * dayWidth}px` }">
+                <div
+                  v-for="day in days"
+                  :key="`${row.pitchId}-${day.key}`"
+                  class="gantt-cell"
+                  :class="{ weekend: day.weekend, today: day.today }"
+                  :style="{ width: `${dayWidth}px` }"
+                />
+                <div
+                  v-for="bar in row.bars"
+                  :key="bar.id"
+                  class="gantt-bar"
+                  :style="barStyle(bar)"
+                  :title="`${bar.groupName}: ${bar.start} – ${bar.end}`"
+                  @click="openBooking(bar.bookingId)"
+                >
+                  {{ bar.groupName }}
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      <aside class="gantt-sidebar">
+        <h2>Zeitraum</h2>
+        <label>
+          Von
+          <input v-model="fromDate" type="date" @change="load" />
+        </label>
+        <label>
+          Bis
+          <input v-model="toDate" type="date" @change="load" />
+        </label>
+      </aside>
     </div>
   </section>
 
@@ -105,8 +110,8 @@ function addDays(date, days) {
 }
 
 const today = new Date()
-const fromDate = ref(formatDate(addDays(today, -5)))
-const toDate = ref(formatDate(addDays(today, 20)))
+const fromDate = ref(formatDate(addDays(today, -14)))
+const toDate = ref(formatDate(addDays(today, 28)))
 
 const rangeStart = computed(() => parseDate(fromDate.value))
 const rangeEnd = computed(() => parseDate(toDate.value))
@@ -117,7 +122,7 @@ const days = computed(() => {
   const result = []
   const cursor = new Date(rangeStart.value)
   const end = rangeEnd.value
-  // "Bis"-Datum inklusive anzeigen (heute-5 … heute+20)
+  // "Bis"-Datum inklusive anzeigen (heute-14 … heute+28)
   while (cursor <= end) {
     const key = formatDate(cursor)
     const weekend = cursor.getDay() === 0 || cursor.getDay() === 6

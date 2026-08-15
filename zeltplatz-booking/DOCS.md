@@ -69,6 +69,83 @@ In Home Assistant z. B. zwei Dashboards mit jeweils einer **Webpage**-Karte (i
 
 Daten liegen persistent unter `/data/booking.db` (im HA-Backup enthalten).
 
+### MQTT / Home Assistant Entities
+
+Voraussetzung: MQTT-Broker in Home Assistant (z. B. Mosquitto). Das Add-on meldet sich optional (`mqtt:want`) und publiziert per **MQTT Discovery**.
+
+| Entity | Bedeutung |
+|--------|-----------|
+| `sensor.zeltplatz_aktive_buchungen` | Anzahl aktiver Buchungen (`start ≤ heute < end`) |
+| `sensor.zeltplatz_anreisen_heute` | Anzahl Anreisen heute |
+| `sensor.zeltplatz_abreisen_heute` | Anzahl Abreisen heute |
+| `binary_sensor.zeltplatz_hat_anreisen_heute` | `on`, wenn mindestens eine Anreise heute |
+| `binary_sensor.zeltplatz_hat_abreisen_heute` | `on`, wenn mindestens eine Abreise heute |
+
+Attribute `bookings` (JSON-Liste): `id`, `group_name`, `start_date`, `end_date`, `pitch_names`.
+
+Zusätzliche Event-Topics (nicht retained):
+
+- `zeltplatz/event/arrival` — Payload mit heutigen Anreisen, wenn sich die Liste ändert
+- `zeltplatz/event/departure` — analog für Abreisen
+
+Aktualisierung: bei Add-on-Start, nach Buchungs-Create/Update/Delete/Amend, und täglich um Mitternacht (Add-on-`timezone`).
+
+#### Beispiel-Automation (Anreise)
+
+```yaml
+alias: Zeltplatz Anreise heute
+trigger:
+  - platform: state
+    entity_id: binary_sensor.zeltplatz_hat_anreisen_heute
+    to: "on"
+action:
+  - service: notify.persistent_notification
+    data:
+      title: Anreise
+      message: >
+        {{ state_attr('binary_sensor.zeltplatz_hat_anreisen_heute', 'bookings') }}
+```
+
+Oder per MQTT-Trigger:
+
+```yaml
+alias: Zeltplatz Anreise MQTT
+trigger:
+  - platform: mqtt
+    topic: zeltplatz/event/arrival
+action:
+  - service: notify.persistent_notification
+    data:
+      title: Anreise
+      message: "{{ trigger.payload_json.bookings }}"
+```
+
+#### Dashboard-Widget (aktive Buchungen)
+
+```yaml
+type: vertical-stack
+cards:
+  - type: entities
+    title: Zeltplatz heute
+    entities:
+      - entity: sensor.zeltplatz_aktive_buchungen
+      - entity: sensor.zeltplatz_anreisen_heute
+      - entity: sensor.zeltplatz_abreisen_heute
+  - type: markdown
+    content: |
+      ### Aktive Buchungen
+      {% set items = state_attr('sensor.zeltplatz_aktive_buchungen', 'bookings') or [] %}
+      {% if items | length == 0 %}
+      Keine aktiven Buchungen.
+      {% else %}
+      {% for b in items %}
+      - **{{ b.group_name }}** ({{ b.start_date }} – {{ b.end_date }}){% if b.pitch_names %} · {{ b.pitch_names | join(', ') }}{% endif %}
+      {% endfor %}
+      {% endif %}
+```
+
+Lokal ohne Broker: `MQTT_HOST` leer lassen — der Publisher bleibt deaktiviert. Zum Testen optional `MQTT_HOST` / `MQTT_PORT` / `MQTT_USERNAME` / `MQTT_PASSWORD` setzen.
+
 ## REST API
 
 Basis: `/api/v1`

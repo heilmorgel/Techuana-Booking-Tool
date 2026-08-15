@@ -22,12 +22,17 @@ from app.api import (
 )
 from app.auth import ApiTokenMiddleware
 from app.database import init_db
+from app.services.mqtt_ha import start_ha_mqtt_publisher, stop_ha_mqtt_publisher
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     init_db()
-    yield
+    await start_ha_mqtt_publisher()
+    try:
+        yield
+    finally:
+        await stop_ha_mqtt_publisher()
 
 
 app = FastAPI(title="Zeltplatz Buchung", version=APP_VERSION, lifespan=lifespan)
