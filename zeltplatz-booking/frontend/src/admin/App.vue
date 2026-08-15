@@ -1,4 +1,5 @@
 <template>
+  <TestSystemBanner />
   <div class="app-shell">
     <header class="topbar">
       <div class="brand">
@@ -18,6 +19,7 @@
 
 <script setup>
 import { RouterLink, RouterView } from 'vue-router'
+import TestSystemBanner from '../components/TestSystemBanner.vue'
 
 const appVersion = import.meta.env.VITE_APP_VERSION || ''
 </script>

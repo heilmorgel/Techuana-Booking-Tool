@@ -45,6 +45,18 @@ button {
   min-height: 100vh;
 }
 
+.test-system-banner {
+  background: #e65100;
+  color: #fff;
+  text-align: center;
+  font-weight: 600;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  padding: 0.55rem 1rem;
+  width: 100%;
+  box-sizing: border-box;
+}
+
 .app-shell {
   max-width: 1200px;
   margin: 0 auto;

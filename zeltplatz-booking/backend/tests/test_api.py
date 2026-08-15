@@ -29,6 +29,14 @@ def test_health(client: TestClient):
     assert r.status_code == 200
     assert r.json()["status"] == "ok"
     assert r.json()["version"] == "0.1.6"
+    assert r.json()["dev_mode"] is True
+
+
+def test_smoke_health_exposes_dev_mode_for_test_banner(client: TestClient):
+    """Smoke: Testumgebungen melden dev_mode für das orange Banner."""
+    payload = client.get("/api/v1/health").json()
+    assert payload["dev_mode"] is True
+    assert payload["status"] == "ok"
 
 
 def test_create_pitch_and_booking_conflict(client: TestClient):

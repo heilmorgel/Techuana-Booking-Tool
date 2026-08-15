@@ -1,4 +1,5 @@
 <template>
+  <TestSystemBanner />
   <div class="app-shell">
     <header class="topbar">
       <div class="brand">
@@ -17,4 +18,5 @@
 
 <script setup>
 import { RouterLink, RouterView } from 'vue-router'
+import TestSystemBanner from '../components/TestSystemBanner.vue'
 </script>
